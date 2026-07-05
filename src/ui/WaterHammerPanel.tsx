@@ -88,6 +88,34 @@ export function WaterHammerPanel() {
         />
       </label>
 
+      <div className="row segmented" style={{ marginTop: 4 }}>
+        <button
+          className={!labInputs.airChamber ? 'active' : ''}
+          onClick={() => setLabInputs({ airChamber: false })}
+        >
+          No Protection
+        </button>
+        <button
+          className={labInputs.airChamber ? 'active' : ''}
+          onClick={() => setLabInputs({ airChamber: true })}
+        >
+          Air Chamber
+        </button>
+      </div>
+      {labInputs.airChamber && (
+        <label className="field">
+          <span>Air chamber gas volume: {labInputs.airChamberVolume.toFixed(1)} m³</span>
+          <input
+            type="range"
+            min={0.2}
+            max={3}
+            step={0.1}
+            value={labInputs.airChamberVolume}
+            onChange={(e) => setLabInputs({ airChamberVolume: Number(e.target.value) })}
+          />
+        </label>
+      )}
+
       <div className="predict">
         <div className="kv"><span>Wave speed a</span><span>{cfg.waveSpeed.toFixed(0)} m/s</span></div>
         <div className="kv"><span>Critical 2L/a</span><span>{criticalTime.toFixed(2)} s</span></div>

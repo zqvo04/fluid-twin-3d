@@ -18,9 +18,23 @@ import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { gridNetwork } from '../examples/largeNetwork';
 import { WaterHammerPanel } from './WaterHammerPanel';
 import { PipelineNetwork, ValidationIssue } from '../domain/network';
-import { applyPreset, ViewPreset } from '../scene/cameraControl';
+import { applyPreset, flyTo, ViewPreset } from '../scene/cameraControl';
 
 const VIEW_PRESETS: ViewPreset[] = ['fit', 'iso', 'top', 'front', 'side'];
+
+function FlowToggle() {
+  const flowViz = useAppStore((s) => s.flowViz);
+  const toggleFlowViz = useAppStore((s) => s.toggleFlowViz);
+  const result = useAppStore((s) => s.result);
+  if (!result) return null;
+  return (
+    <div className="row">
+      <button className={flowViz ? 'wide active' : 'wide'} onClick={toggleFlowViz}>
+        {flowViz ? '● Flow animation: ON' : '○ Flow animation: OFF'}
+      </button>
+    </div>
+  );
+}
 
 function NavBar() {
   return (
@@ -250,6 +264,24 @@ function NetworkControls({
   connectorWarnings,
   vulnWarnings,
 }: NetworkControlsProps) {
+  const select = useAppStore((s) => s.select);
+
+  // Click an alarm -> select and fly the camera to the offending component.
+  const focusLink = (linkId: string) => {
+    const link = network.links.find((l) => l.id === linkId);
+    if (!link) return;
+    select(linkId);
+    const a = network.nodes.find((n) => n.id === link.from)?.position;
+    const b = network.nodes.find((n) => n.id === link.to)?.position;
+    if (a && b) flyTo((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, 4);
+  };
+  const focusNode = (nodeId: string) => {
+    const n = network.nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    select(nodeId);
+    flyTo(n.position.x, n.position.y, n.position.z, 3);
+  };
+
   return (
     <>
       <div className="row" style={{ marginTop: 10 }}>
@@ -277,6 +309,8 @@ function NetworkControls({
         </div>
       )}
 
+      <FlowToggle />
+
       <div className="section">
         <h2>Assemble</h2>
         <div className="grid2">
@@ -301,13 +335,16 @@ function NetworkControls({
         <div className="section">
           <h2>Warnings</h2>
           {dutyWarnings.map((d) => (
-            <p key={d.linkId} className="warn">⚠ {d.linkId}: {d.message}</p>
+            <p key={d.linkId} className="warn click" onClick={() => focusLink(d.linkId)}>⚠ {d.linkId}: {d.message}</p>
           ))}
-          {vulnWarnings.map((w, i) => (
-            <p key={`v${i}`} className="warn">⚠ {w}</p>
-          ))}
+          {vulnWarnings.map((w, i) => {
+            const id = w.split(':')[0];
+            return (
+              <p key={`v${i}`} className="warn click" onClick={() => focusLink(id)}>⚠ {w}</p>
+            );
+          })}
           {connectorWarnings.slice(0, 4).map((w, i) => (
-            <p key={i} className="warn">⚠ {w.message}</p>
+            <p key={i} className="warn click" onClick={() => w.ref && focusNode(w.ref)}>⚠ {w.message}</p>
           ))}
           {connectorWarnings.length > 4 && (
             <p className="muted">…and {connectorWarnings.length - 4} more size warnings.</p>

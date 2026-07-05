@@ -37,6 +37,9 @@ interface AppState {
   stepsPerFrame: number;
   periods: number;
 
+  /** Animate flow particles in the Global view. */
+  flowViz: boolean;
+
   setViewMode: (m: ViewMode) => void;
   select: (id: string | null) => void;
   setSolving: (v: boolean) => void;
@@ -51,6 +54,7 @@ interface AppState {
   setLabInputs: (patch: Partial<LabInputs>) => void;
   setClosureTime: (t: number) => void;
   setStepsPerFrame: (n: number) => void;
+  toggleFlowViz: () => void;
 }
 
 /** Editing the network invalidates any prior analysis result. */
@@ -70,6 +74,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   closureTime: 0.5,
   stepsPerFrame: 2,
   periods: 8,
+  flowViz: true,
 
   setViewMode: (m) => set({ viewMode: m }),
   select: (id) => set({ selectedId: id }),
@@ -120,4 +125,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLabInputs: (patch) => set({ labInputs: { ...get().labInputs, ...patch } }),
   setClosureTime: (t) => set({ closureTime: t }),
   setStepsPerFrame: (n) => set({ stepsPerFrame: n }),
+  toggleFlowViz: () => set({ flowViz: !get().flowViz }),
 }));
