@@ -17,6 +17,7 @@ import {
   updateNode as updateNodeOp,
   updateLink as updateLinkOp,
   changeLinkKind as changeLinkKindOp,
+  splitPipe as splitPipeOp,
   LinkDefaults,
 } from '../domain/edit';
 import { NominalSize, Schedule } from '../domain/catalog/pipes';
@@ -88,7 +89,7 @@ interface AppState {
   runClickAt: (position: Vec3) => void;
   cancelBuild: () => void;
   handleNodeClick: (nodeId: string) => void;
-  handleLinkClick: (linkId: string) => void;
+  handleLinkClick: (linkId: string, point?: Vec3) => void;
   editNode: (id: string, patch: Partial<NetworkNode>) => void;
   editLink: (id: string, patch: Partial<NetworkLink>) => void;
   editLinkKind: (id: string, kind: 'pipe' | 'valve' | 'pump') => void;
@@ -247,11 +248,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedId: nodeId });
   },
 
-  handleLinkClick: (linkId) => {
+  handleLinkClick: (linkId, point) => {
     const { editMode, editTool, network } = get();
     if (editMode && editTool === 'delete') {
       set({ ...withStaleResult(removeElement(network, linkId)), selectedId: null });
       return;
+    }
+    // Cities-Skylines tap-in: in Run mode, clicking a pipe splits it at the
+    // click point and continues the run from the new junction.
+    if (editMode && editTool === 'run' && point) {
+      const link = network.links.find((l) => l.id === linkId);
+      if (link && link.kind === 'pipe') {
+        const { network: net2, newNodeId } = splitPipeOp(network, linkId, point);
+        const { runFrom, linkDefaults } = get();
+        let net3 = net2;
+        if (runFrom && newNodeId && runFrom !== newNodeId) {
+          net3 = addLinkOp(net2, makeLink(runFrom, newNodeId, linkDefaults, net2));
+        }
+        set({ ...withStaleResult(net3), runFrom: newNodeId, selectedId: newNodeId });
+        return;
+      }
     }
     set({ selectedId: linkId });
   },

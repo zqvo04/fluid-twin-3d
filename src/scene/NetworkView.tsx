@@ -6,8 +6,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Vector3, Quaternion, Mesh } from 'three';
+import { Vector3, Quaternion, Mesh, Color } from 'three';
 import { ThreeEvent } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import { useAppStore } from '../ui/store';
 import { PipelineNetwork, NetworkNode, NetworkLink, nodeById } from '../domain/network';
 import { pipeGeometry } from '../domain/catalog/pipes';
@@ -40,7 +41,10 @@ function headColor(result: HeadResult, from: string, to: string): string {
   return '#' + rampColor(normalize((hA + hB) / 2, min, max)).getHexString();
 }
 
-/** Valve and pump links: a body cylinder plus a distinct marker. */
+/** Valve and pump links: a body cylinder, a distinct marker, and a live label
+ *  showing the pressure drop (ΔP) and, for valves, the opening. The valve marker
+ *  glows amber→red with the magnitude of its head loss, so a throttled valve
+ *  visibly "does something". */
 function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink }) {
   const handleLinkClick = useAppStore((s) => s.handleLinkClick);
   const editMode = useAppStore((s) => s.editMode);
@@ -52,11 +56,18 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
     link.kind === 'valve' ? Math.max(0.16, pipeGeometry(link.nps, link.schedule).od * 2.6) : 0.28;
   const color = headColor(result, link.from, link.to);
 
+  const r = result?.links.get(link.id);
+  const headLoss = r?.headLoss ?? 0; // gauge head drop across the component [m]
+  // Severity 0..1 from the pressure drop (10 m ≈ 1 bar reads as significant).
+  const severity = Math.max(0, Math.min(1, Math.abs(headLoss) / 12));
+  const valveColor = new Color('#e0a030').lerp(new Color('#ff2a1a'), severity);
+  const bar = (headLoss * 998 * 9.80665) / 1e5; // ΔP in bar
+
   return (
     <group
       onClick={(e) => {
         e.stopPropagation();
-        handleLinkClick(link.id);
+        handleLinkClick(link.id, { x: mid.x, y: mid.y, z: mid.z });
         if (!editMode) flyTo(mid.x, mid.y, mid.z, Math.max(2, length * 0.6));
       }}
     >
@@ -69,23 +80,31 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
           <sphereGeometry args={[0.5, 20, 20]} />
           <meshStandardMaterial
             color="#2b6cff"
-            emissive={selected ? '#ffffff' : '#000000'}
-            emissiveIntensity={selected ? 0.5 : 0}
+            emissive={selected ? '#ffffff' : '#1030ff'}
+            emissiveIntensity={selected ? 0.6 : 0.3}
             metalness={0.5}
             roughness={0.4}
           />
         </mesh>
       ) : (
         <mesh position={mid} quaternion={quat}>
-          <boxGeometry args={[radius * 3, 0.5, radius * 3]} />
+          <boxGeometry args={[radius * 3, 0.6, radius * 3]} />
           <meshStandardMaterial
-            color="#e0a030"
-            emissive={selected ? '#ffffff' : '#000000'}
-            emissiveIntensity={selected ? 0.5 : 0}
+            color={valveColor}
+            emissive={selected ? '#ffffff' : valveColor}
+            emissiveIntensity={selected ? 0.6 : 0.25 + 0.9 * severity}
             metalness={0.4}
             roughness={0.5}
           />
         </mesh>
+      )}
+      {r && (
+        <Html position={[mid.x, mid.y + 1.1, mid.z]} center distanceFactor={26} zIndexRange={[10, 0]}>
+          <div className={`tag ${severity > 0.5 ? 'tag-hot' : ''}`}>
+            {link.kind === 'valve' && <b>{(link.opening * 100).toFixed(0)}% open</b>}
+            <span>ΔP {Math.abs(bar).toFixed(2)} bar</span>
+          </div>
+        </Html>
       )}
     </group>
   );

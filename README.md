@@ -145,6 +145,17 @@ list of animated "flowing" bars whose stripe speed tracks the velocity.
 **Game-like building** — a Minecraft-style block cursor: a glowing grid cell
 follows the mouse, a ghost of the component-to-place hovers in it, and during a
 Pipe Run a ghost pipe previews the next segment. Nodes highlight on hover.
+**Cities-Skylines tap-in**: in Pipe Run, click an existing pipe to split it at
+that point (insert a junction) and branch off it, or click a node to
+start/continue a run from it.
+
+**Component pressure readout** — every valve and pump shows a live 3D label with
+its pressure drop (ΔP, bar) and, for valves, the opening; the valve marker glows
+amber→red with the magnitude of its head loss, so a throttled valve visibly does
+work. A throttled valve whose cavitation index σ falls below its incipient value
+is flagged (ISA), since in steady flow the volumetric rate is conserved across
+the valve — the physics the valve expresses is the *pressure* drop, not a speed
+change.
 
 ## Deployment
 

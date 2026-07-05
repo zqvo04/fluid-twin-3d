@@ -10,7 +10,7 @@ import { NOMINAL_SIZES, NominalSize, Schedule } from '../domain/catalog/pipes';
 import { VALVE_TYPES, ValveType } from '../domain/catalog/valves';
 
 const TOOLS: { id: EditTool; label: string; hint: string }[] = [
-  { id: 'run', label: '✏ Pipe Run', hint: 'Click points on the ground to draw a connected run. Snaps to nearby nodes. Esc to finish.' },
+  { id: 'run', label: '✏ Pipe Run', hint: 'Click the ground to draw a connected run. Click a node to start/continue from it, or click a pipe to tap in (branch). Esc to finish.' },
   { id: 'place-reservoir', label: '+ Tank', hint: 'Click the ground to drop a tank/reservoir.' },
   { id: 'place-junction', label: '+ Junction', hint: 'Click the ground to drop a junction.' },
   { id: 'connect', label: 'Connect', hint: 'Click two nodes to join them with a component.' },
