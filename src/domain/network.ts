@@ -1,0 +1,152 @@
+/**
+ * Network graph — the single source of truth for the pipeline.
+ *
+ * Mathematically the network is a directed graph of nodes and links; visually
+ * the same data drives the 3D scene. Node Y-coordinate is the physical
+ * elevation used by the solver, so "what you assemble in 3D is what you
+ * analyze". SubAssemblies group members (e.g. a pump skid) for reuse and for
+ * the Global/Detail view switch.
+ */
+
+import { NominalSize, Schedule } from './catalog/pipes';
+import { ValveType } from './catalog/valves';
+import { FittingType } from './catalog/fittings';
+import { PumpSpec } from './catalog/pumps';
+
+export interface Vec3 {
+  x: number;
+  y: number; // elevation [m]
+  z: number;
+}
+
+export type NodeType = 'junction' | 'reservoir';
+
+export interface NetworkNode {
+  id: string;
+  type: NodeType;
+  position: Vec3;
+  /** Junction demand (outflow) [m^3/s]. Positive = water consumed. */
+  demand?: number;
+  /**
+   * Reservoir total head [m]. If omitted, defaults to the node elevation
+   * (free surface at grade). Gauge pressure head can be added here.
+   */
+  fixedHead?: number;
+}
+
+export interface PipeLink {
+  id: string;
+  kind: 'pipe';
+  from: string;
+  to: string;
+  nps: NominalSize;
+  schedule: Schedule;
+  /** Centerline length [m]. Defaults to straight-line node distance if unset. */
+  length?: number;
+  /** Fittings along this run; their K values are summed as a minor loss. */
+  fittings?: FittingType[];
+}
+
+export interface ValveLink {
+  id: string;
+  kind: 'valve';
+  from: string;
+  to: string;
+  valveType: ValveType;
+  nps: NominalSize;
+  schedule: Schedule;
+  /** Fractional opening 0 (closed) .. 1 (fully open). */
+  opening: number;
+}
+
+export interface PumpLink {
+  id: string;
+  kind: 'pump';
+  from: string;
+  to: string;
+  spec: PumpSpec;
+  /** Speed ratio relative to rated (1 = rated, VFD control < 1). */
+  speedRatio: number;
+}
+
+export type NetworkLink = PipeLink | ValveLink | PumpLink;
+
+export interface SubAssembly {
+  id: string;
+  name: string;
+  nodeIds: string[];
+  linkIds: string[];
+}
+
+export interface PipelineNetwork {
+  nodes: NetworkNode[];
+  links: NetworkLink[];
+  subAssemblies: SubAssembly[];
+  /** Operating fluid temperature [C]. */
+  temperatureC: number;
+}
+
+export function emptyNetwork(temperatureC = 20): PipelineNetwork {
+  return { nodes: [], links: [], subAssemblies: [], temperatureC };
+}
+
+// --- Lookups & geometry helpers -----------------------------------------
+
+export function nodeById(net: PipelineNetwork, id: string): NetworkNode {
+  const n = net.nodes.find((x) => x.id === id);
+  if (!n) throw new Error(`Network node not found: ${id}`);
+  return n;
+}
+
+export function distance(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/** Effective length of a pipe link (explicit override or straight-line). */
+export function linkLength(net: PipelineNetwork, link: PipeLink): number {
+  if (link.length !== undefined) return link.length;
+  return distance(nodeById(net, link.from).position, nodeById(net, link.to).position);
+}
+
+// --- Validation ----------------------------------------------------------
+
+export interface ValidationIssue {
+  severity: 'error' | 'warning';
+  message: string;
+  ref?: string;
+}
+
+/**
+ * Structural sanity checks run before analysis. Catches dangling links, size
+ * mismatches at valve/pump connections, and networks with no fixed-head anchor
+ * (which would leave the head field undetermined).
+ */
+export function validateNetwork(net: PipelineNetwork): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const ids = new Set(net.nodes.map((n) => n.id));
+
+  for (const link of net.links) {
+    if (!ids.has(link.from)) {
+      issues.push({ severity: 'error', message: `Link ${link.id} references missing node ${link.from}`, ref: link.id });
+    }
+    if (!ids.has(link.to)) {
+      issues.push({ severity: 'error', message: `Link ${link.id} references missing node ${link.to}`, ref: link.id });
+    }
+    if (link.from === link.to) {
+      issues.push({ severity: 'error', message: `Link ${link.id} connects a node to itself`, ref: link.id });
+    }
+  }
+
+  const reservoirs = net.nodes.filter((n) => n.type === 'reservoir');
+  if (reservoirs.length === 0) {
+    issues.push({
+      severity: 'error',
+      message: 'Network has no reservoir / fixed-head node; the head field is undetermined.',
+    });
+  }
+
+  return issues;
+}
