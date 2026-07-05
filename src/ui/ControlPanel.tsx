@@ -1,17 +1,36 @@
 /**
- * Overlay control panel: run the analysis, toggle Global/Detail view, and
- * inspect the selected component's results. Kept as a plain DOM overlay (not
- * in-canvas) so text stays crisp and accessible.
+ * Overlay control panel: run analysis, manage the project (save/load), assemble
+ * (clone a skid, load the stress grid), toggle Global/Detail view, inspect and
+ * edit the selected component, and surface pump BEP warnings. Kept as a plain
+ * DOM overlay so text stays crisp and accessible.
  */
 
+import { useMemo, useRef } from 'react';
 import { useAppStore } from './store';
 import { useSimulationWorker } from './useSimulationWorker';
 import { paToBar, headToPressure } from '../domain/units';
+import { serializeProject, deserializeProject } from '../domain/serialize';
+import { checkConnectors } from '../domain/connectivity';
+import { analyzePumpDuty } from '../analysis/pumpDuty';
+import { pumpSkidNetwork } from '../examples/demoNetworks';
+import { gridNetwork } from '../examples/largeNetwork';
 
-function SelectionDetails() {
+function download(filename: string, text: string) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function Inspector() {
   const network = useAppStore((s) => s.network);
   const result = useAppStore((s) => s.result);
   const selectedId = useAppStore((s) => s.selectedId);
+  const updateValveOpening = useAppStore((s) => s.updateValveOpening);
+  const updatePumpSpeed = useAppStore((s) => s.updatePumpSpeed);
   if (!selectedId) return <p className="muted">Click a component to inspect it.</p>;
 
   const node = network.nodes.find((n) => n.id === selectedId);
@@ -47,6 +66,32 @@ function SelectionDetails() {
         {link.kind !== 'pump' && 'nps' in link && (
           <div className="kv"><span>Size</span><span>{link.nps} Sch {link.schedule}</span></div>
         )}
+        {link.kind === 'valve' && (
+          <label className="field">
+            <span>Opening: {(link.opening * 100).toFixed(0)}%</span>
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.05}
+              value={link.opening}
+              onChange={(e) => updateValveOpening(link.id, Number(e.target.value))}
+            />
+          </label>
+        )}
+        {link.kind === 'pump' && (
+          <label className="field">
+            <span>Speed: {(link.speedRatio * 100).toFixed(0)}%</span>
+            <input
+              type="range"
+              min={0.3}
+              max={1}
+              step={0.05}
+              value={link.speedRatio}
+              onChange={(e) => updatePumpSpeed(link.id, Number(e.target.value))}
+            />
+          </label>
+        )}
         {r && (
           <>
             <div className="kv"><span>Flow</span><span>{(r.flow * 3600).toFixed(1)} m³/h</span></div>
@@ -70,11 +115,36 @@ export function ControlPanel() {
   const result = useAppStore((s) => s.result);
   const solving = useAppStore((s) => s.solving);
   const network = useAppStore((s) => s.network);
+  const setNetwork = useAppStore((s) => s.setNetwork);
+  const cloneFirstSkid = useAppStore((s) => s.cloneFirstSkid);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const connectorWarnings = useMemo(() => checkConnectors(network), [network]);
+  const duties = useMemo(
+    () => (result ? analyzePumpDuty(network, result) : []),
+    [network, result],
+  );
+  const dutyWarnings = duties.filter((d) => d.status !== 'ok');
+
+  const onLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        setNetwork(deserializeProject(String(reader.result)));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to load project.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   return (
     <div className="panel">
       <h1>FluidTwin 3D</h1>
-      <p className="subtitle">Pipeline Digital Twin · Phase 1</p>
+      <p className="subtitle">Pipeline Digital Twin · Phase 2</p>
 
       <div className="row">
         <button className="primary" onClick={solve} disabled={solving}>
@@ -102,6 +172,18 @@ export function ControlPanel() {
       )}
 
       <div className="section">
+        <h2>Assemble</h2>
+        <div className="grid2">
+          <button onClick={cloneFirstSkid} disabled={network.subAssemblies.length === 0}>Clone Skid</button>
+          <button onClick={() => setNetwork(gridNetwork(16, 16))}>Load 480-Pipe Grid</button>
+          <button onClick={() => setNetwork(pumpSkidNetwork())}>Reset Demo</button>
+          <button onClick={() => download('pipeline-project.json', serializeProject(network))}>Save JSON</button>
+        </div>
+        <button className="wide" onClick={() => fileInput.current?.click()}>Load JSON…</button>
+        <input ref={fileInput} type="file" accept="application/json" hidden onChange={onLoadFile} />
+      </div>
+
+      <div className="section">
         <h2>Network</h2>
         <div className="kv"><span>Nodes</span><span>{network.nodes.length}</span></div>
         <div className="kv"><span>Links</span><span>{network.links.length}</span></div>
@@ -109,14 +191,29 @@ export function ControlPanel() {
         <div className="kv"><span>Fluid temp</span><span>{network.temperatureC} °C</span></div>
       </div>
 
+      {(dutyWarnings.length > 0 || connectorWarnings.length > 0) && (
+        <div className="section">
+          <h2>Warnings</h2>
+          {dutyWarnings.map((d) => (
+            <p key={d.linkId} className="warn">⚠ {d.linkId}: {d.message}</p>
+          ))}
+          {connectorWarnings.slice(0, 4).map((w, i) => (
+            <p key={i} className="warn">⚠ {w.message}</p>
+          ))}
+          {connectorWarnings.length > 4 && (
+            <p className="muted">…and {connectorWarnings.length - 4} more size warnings.</p>
+          )}
+        </div>
+      )}
+
       <div className="section">
         <h2>Inspector</h2>
-        <SelectionDetails />
+        <Inspector />
       </div>
 
       <p className="footnote">
-        Head field colored blue→red across the network. Reservoirs are cubes, junctions spheres,
-        pumps blue, valves amber.
+        Head field colored blue→red. Reservoirs are cubes, junctions spheres, pumps blue, valves
+        amber. Pipes render via a single InstancedMesh draw call.
       </p>
     </div>
   );

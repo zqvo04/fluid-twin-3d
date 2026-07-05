@@ -155,3 +155,40 @@ button.primary:disabled {
   color: #7a828e;
   line-height: 1.5;
 }
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.grid2 button {
+  font-size: 12px;
+  padding: 7px 8px;
+}
+
+button.wide {
+  width: 100%;
+}
+
+.field {
+  display: block;
+  margin: 8px 0;
+}
+
+.field span {
+  display: block;
+  color: #8a93a0;
+  margin-bottom: 4px;
+}
+
+.field input[type='range'] {
+  width: 100%;
+}
+
+.section p.warn {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 4px 0;
+}
