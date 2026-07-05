@@ -27,7 +27,7 @@ import { SolveSteadyResponse } from '../worker/protocol';
 
 export type ViewMode = 'global' | 'detail';
 export type SceneKind = 'network' | 'waterhammer';
-export type EditTool = 'select' | 'place-junction' | 'place-reservoir' | 'connect' | 'delete';
+export type EditTool = 'select' | 'run' | 'place-junction' | 'place-reservoir' | 'connect' | 'delete';
 
 export interface AnalysisResult {
   converged: boolean;
@@ -59,6 +59,8 @@ interface AppState {
   editTool: EditTool;
   buildElevation: number;
   connectFrom: string | null;
+  /** Previous node in an in-progress "Pipe Run" chain. */
+  runFrom: string | null;
   linkDefaults: LinkDefaults;
 
   setViewMode: (m: ViewMode) => void;
@@ -83,6 +85,8 @@ interface AppState {
   setBuildElevation: (y: number) => void;
   setLinkDefaults: (patch: Partial<LinkDefaults>) => void;
   placeNodeAt: (position: Vec3) => void;
+  runClickAt: (position: Vec3) => void;
+  cancelBuild: () => void;
   handleNodeClick: (nodeId: string) => void;
   handleLinkClick: (linkId: string) => void;
   editNode: (id: string, patch: Partial<NetworkNode>) => void;
@@ -114,6 +118,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   editTool: 'select',
   buildElevation: 0,
   connectFrom: null,
+  runFrom: null,
   linkDefaults: { kind: 'pipe', nps: '4"', schedule: '40', valveType: 'gate' },
 
   setViewMode: (m) => set({ viewMode: m }),
@@ -169,16 +174,45 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // --- Builder ----------------------------------------------------------
   toggleEditMode: () =>
-    set((s) => ({ editMode: !s.editMode, editTool: 'select', connectFrom: null, selectedId: null })),
-  setEditTool: (t) => set({ editTool: t, connectFrom: null }),
+    set((s) => ({ editMode: !s.editMode, editTool: 'select', connectFrom: null, runFrom: null, selectedId: null })),
+  setEditTool: (t) => set({ editTool: t, connectFrom: null, runFrom: null }),
   setBuildElevation: (y) => set({ buildElevation: y }),
   setLinkDefaults: (patch) => set({ linkDefaults: { ...get().linkDefaults, ...patch } }),
+  cancelBuild: () => set({ connectFrom: null, runFrom: null }),
 
   placeNodeAt: (position) => {
     const { editTool, network } = get();
     const type: NodeType = editTool === 'place-reservoir' ? 'reservoir' : 'junction';
     const node = makeNode(type, position, network);
     set({ ...withStaleResult(addNodeOp(network, node)), selectedId: node.id });
+  },
+
+  // Pipe Run: click points to draw a connected pipeline. Snaps to a nearby
+  // existing node so runs can branch off or close loops.
+  runClickAt: (position) => {
+    const { network, runFrom, linkDefaults } = get();
+    const SNAP = 1.6;
+    const near = network.nodes.find((n) => {
+      const dx = n.position.x - position.x;
+      const dy = n.position.y - position.y;
+      const dz = n.position.z - position.z;
+      return dx * dx + dy * dy + dz * dz < SNAP * SNAP;
+    });
+
+    let net = network;
+    let targetId: string;
+    if (near) {
+      targetId = near.id;
+    } else {
+      const node = makeNode('junction', position, net);
+      net = addNodeOp(net, node);
+      targetId = node.id;
+    }
+    if (runFrom && runFrom !== targetId) {
+      const link = makeLink(runFrom, targetId, linkDefaults, net);
+      net = addLinkOp(net, link);
+    }
+    set({ ...withStaleResult(net), runFrom: targetId, selectedId: targetId });
   },
 
   handleNodeClick: (nodeId) => {
@@ -197,6 +231,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else if (connectFrom !== nodeId) {
         const link = makeLink(connectFrom, nodeId, get().linkDefaults, network);
         set({ ...withStaleResult(addLinkOp(network, link)), connectFrom: null, selectedId: link.id });
+      }
+      return;
+    }
+    if (editTool === 'run') {
+      const { runFrom, linkDefaults } = get();
+      if (runFrom && runFrom !== nodeId) {
+        const link = makeLink(runFrom, nodeId, linkDefaults, network);
+        set({ ...withStaleResult(addLinkOp(network, link)), runFrom: nodeId, selectedId: nodeId });
+      } else {
+        set({ runFrom: nodeId, selectedId: nodeId });
       }
       return;
     }

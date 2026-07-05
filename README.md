@@ -120,18 +120,25 @@ verdicts, plus assembly-friendly navigation:
 The simulator is a build-your-own-plant tool, not just a viewer. In **Build
 mode** the user:
 
-- drops **tanks/reservoirs and junctions** onto the ground (grid-snapped at a
-  chosen elevation),
-- **connects** any two nodes with a **pipe, valve, or pump** — valves cover the
-  four industrial types (gate, globe, ball, butterfly) with their real Cv/K
-  characteristics,
+- draws a pipeline with the **Pipe Run** tool — each ground click drops a node
+  and connects it to the last, snapping to nearby nodes so runs branch and close
+  loops (Esc finishes); a ghost marker and rubber-band line make it feel like
+  drawing,
+- or drops **tanks/reservoirs and junctions** individually and **connects** any
+  two nodes with a **pipe, valve, or pump** — valves cover the four industrial
+  types (gate, globe, ball, butterfly) with their real Cv/K characteristics,
 - **edits** every property (node type, elevation, demand, fixed head; component
   kind, size 2–8", Sch 40/80, valve type) through an inspector,
 - **deletes** components (cascading to incident links), or starts from a blank
   canvas,
 
-then runs steady + vulnerability analysis on whatever they built. All editing
-is pure, immutable, and unit-tested (`domain/edit.ts`).
+with hover highlighting and pointer cursors throughout. The user then runs
+steady + vulnerability analysis on whatever they built. All editing is pure,
+immutable, and unit-tested (`domain/edit.ts`).
+
+**Flow visualization** — once solved, arrow glyphs advect along each pipe in the
+flow direction at a speed proportional to the computed velocity and colored by
+magnitude (blue slow → red fast).
 
 ## Deployment
 
