@@ -17,6 +17,7 @@ import { waterProperties } from '../domain/fluid';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { gridNetwork } from '../examples/largeNetwork';
 import { WaterHammerPanel } from './WaterHammerPanel';
+import { BuildPanel } from './BuildPanel';
 import { PipelineNetwork, ValidationIssue } from '../domain/network';
 import { applyPreset, flyTo, ViewPreset } from '../scene/cameraControl';
 
@@ -282,22 +283,35 @@ function NetworkControls({
     flyTo(n.position.x, n.position.y, n.position.z, 3);
   };
 
+  const editMode = useAppStore((s) => s.editMode);
+  const toggleEditMode = useAppStore((s) => s.toggleEditMode);
+
   return (
     <>
       <div className="row" style={{ marginTop: 10 }}>
+        <button className={editMode ? 'wide active' : 'wide'} onClick={toggleEditMode}>
+          {editMode ? '✎ Build Mode: ON' : '✎ Build / Edit Pipeline'}
+        </button>
+      </div>
+
+      {editMode && <BuildPanel />}
+
+      <div className="row">
         <button className="primary" onClick={solve} disabled={solving}>
           {solving ? 'Solving…' : 'Run Steady-State Analysis'}
         </button>
       </div>
 
-      <div className="row segmented">
-        <button className={viewMode === 'global' ? 'active' : ''} onClick={() => setViewMode('global')}>
-          Global View
-        </button>
-        <button className={viewMode === 'detail' ? 'active' : ''} onClick={() => setViewMode('detail')}>
-          Detail View
-        </button>
-      </div>
+      {!editMode && (
+        <div className="row segmented">
+          <button className={viewMode === 'global' ? 'active' : ''} onClick={() => setViewMode('global')}>
+            Global View
+          </button>
+          <button className={viewMode === 'detail' ? 'active' : ''} onClick={() => setViewMode('detail')}>
+            Detail View
+          </button>
+        </div>
+      )}
 
       {result && (
         <div className="status">

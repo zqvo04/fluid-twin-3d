@@ -41,7 +41,8 @@ function headColor(result: HeadResult, from: string, to: string): string {
 
 /** Valve and pump links: a body cylinder plus a distinct marker. */
 function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink }) {
-  const select = useAppStore((s) => s.select);
+  const handleLinkClick = useAppStore((s) => s.handleLinkClick);
+  const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === link.id);
   const result = useAppStore((s) => s.result);
   const { mid, quat, length } = orient(nodeById(net, link.from), nodeById(net, link.to));
@@ -54,8 +55,8 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
     <group
       onClick={(e) => {
         e.stopPropagation();
-        select(link.id);
-        flyTo(mid.x, mid.y, mid.z, Math.max(2, length * 0.6));
+        handleLinkClick(link.id);
+        if (!editMode) flyTo(mid.x, mid.y, mid.z, Math.max(2, length * 0.6));
       }}
     >
       <mesh position={mid} quaternion={quat}>
@@ -90,24 +91,58 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
 }
 
 function NodeMesh({ node }: { node: NetworkNode }) {
-  const select = useAppStore((s) => s.select);
+  const handleNodeClick = useAppStore((s) => s.handleNodeClick);
+  const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === node.id);
+  const isConnectFrom = useAppStore((s) => s.connectFrom === node.id);
   const isReservoir = node.type === 'reservoir';
+  const highlight = selected || isConnectFrom;
   return (
     <mesh
       position={[node.position.x, node.position.y, node.position.z]}
       onClick={(e) => {
         e.stopPropagation();
-        select(node.id);
-        flyTo(node.position.x, node.position.y, node.position.z, 3);
+        handleNodeClick(node.id);
+        if (!editMode) flyTo(node.position.x, node.position.y, node.position.z, 3);
       }}
     >
-      {isReservoir ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.24, 14, 14]} />}
+      {isReservoir ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.32, 16, 16]} />}
       <meshStandardMaterial
-        color={isReservoir ? '#3aa0a0' : '#c0c4cc'}
-        emissive={selected ? '#ffffff' : '#000000'}
-        emissiveIntensity={selected ? 0.5 : 0}
+        color={isConnectFrom ? '#ffd24d' : isReservoir ? '#3aa0a0' : '#c0c4cc'}
+        emissive={highlight ? '#ffffff' : '#000000'}
+        emissiveIntensity={highlight ? 0.5 : 0}
       />
+    </mesh>
+  );
+}
+
+/**
+ * Invisible ground plane that captures clicks in build mode to place nodes at
+ * the current build elevation, snapped to a 1 m grid.
+ */
+function EditPlane() {
+  const editMode = useAppStore((s) => s.editMode);
+  const editTool = useAppStore((s) => s.editTool);
+  const buildElevation = useAppStore((s) => s.buildElevation);
+  const placeNodeAt = useAppStore((s) => s.placeNodeAt);
+  const active = editMode && editTool.startsWith('place');
+  if (!active) return null;
+
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[10, buildElevation, 0]}
+      onClick={(e) => {
+        e.stopPropagation();
+        placeNodeAt({
+          x: Math.round(e.point.x),
+          y: buildElevation,
+          z: Math.round(e.point.z),
+        });
+      }}
+    >
+      <planeGeometry args={[400, 400]} />
+      <meshBasicMaterial transparent opacity={0.06} color="#2b6cff" />
     </mesh>
   );
 }
@@ -146,6 +181,7 @@ export function NetworkView() {
       ))}
       <SelectionHighlight net={network} />
       {flowViz && <FlowParticles network={network} />}
+      <EditPlane />
     </group>
   );
 }
