@@ -136,9 +136,15 @@ with hover highlighting and pointer cursors throughout. The user then runs
 steady + vulnerability analysis on whatever they built. All editing is pure,
 immutable, and unit-tested (`domain/edit.ts`).
 
-**Flow visualization** — once solved, arrow glyphs advect along each pipe in the
-flow direction at a speed proportional to the computed velocity and colored by
-magnitude (blue slow → red fast).
+**Flow visualization** — pipes are drawn as chunky tubes and bright glowing
+slugs travel through them in the flow direction at a speed proportional to the
+computed velocity, colored by magnitude. A **live flow dashboard** overlays the
+Global view with system metrics (demand, peak velocity, max head) and a per-pipe
+list of animated "flowing" bars whose stripe speed tracks the velocity.
+
+**Game-like building** — a Minecraft-style block cursor: a glowing grid cell
+follows the mouse, a ghost of the component-to-place hovers in it, and during a
+Pipe Run a ghost pipe previews the next segment. Nodes highlight on hover.
 
 ## Deployment
 
