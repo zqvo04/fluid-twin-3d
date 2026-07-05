@@ -21,6 +21,10 @@ export interface LabInputs {
   segments: number;
   /** Pipe centerline elevation [m] (the vapor-head datum). */
   pipeElevation: number;
+  /** Install a surge-protection air chamber just upstream of the valve. */
+  airChamber: boolean;
+  /** Air chamber trapped-gas volume [m^3]. */
+  airChamberVolume: number;
 }
 
 export const DEFAULT_LAB_INPUTS: LabInputs = {
@@ -32,6 +36,8 @@ export const DEFAULT_LAB_INPUTS: LabInputs = {
   tempC: 20,
   segments: 48,
   pipeElevation: 0,
+  airChamber: false,
+  airChamberVolume: 1.0,
 };
 
 export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): WaterHammerConfig {
@@ -46,6 +52,7 @@ export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): W
   // Total-head level at which absolute pressure reaches vapor pressure at the
   // pipe elevation: H_vapor = z + (p_vapor - p_atm) / (rho*g).
   const vaporHead = input.pipeElevation + (fluid.pv - ATM) / (fluid.rho * G);
+  const barometricHead = ATM / (fluid.rho * G);
 
   return {
     length: input.length,
@@ -57,5 +64,13 @@ export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): W
     initialFlow: flow,
     segments: input.segments,
     vaporHead,
+    airChamber: input.airChamber
+      ? {
+          gasVolume: input.airChamberVolume,
+          polytropic: 1.2,
+          elevation: input.pipeElevation,
+          barometricHead,
+        }
+      : undefined,
   };
 }

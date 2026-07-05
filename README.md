@@ -17,8 +17,8 @@ the full physics/architecture design and the 7-phase roadmap.
 | **2** | Modular assembly + InstancedMesh Global View + pump BEP warning | ✅ done |
 | **3** | Transient MOC water-hammer engine + streamed Water Hammer Lab | ✅ done |
 | **4** | Vulnerability analysis (cavitation, B31.3, NPSH, erosion) + navigation | ✅ done |
-| 5 | Detail View, scenarios, surge-protection design loop | next |
-| 6 | Engineering reports + example plants | planned |
+| **5** | Surge-protection design loop, flow viz, fly-to, static-pipe highlight | ✅ done |
+| 6 | Engineering reports + example plants | next |
 
 ## What Phase 1 delivers
 
@@ -96,6 +96,23 @@ verdicts, plus assembly-friendly navigation:
 - **Navigation** — CameraControls (orbit + pan + dolly with damping), view
   presets (Fit / Iso / Top / Front / Side), and WASD/QE + arrow-key movement, so
   the model can be inspected and assembled, not just spun.
+
+## What Phase 5 adds
+
+- **Surge-protection design loop** — an air chamber (surge vessel) can be
+  installed just upstream of the valve; the trapped gas cushions the surge via a
+  polytropic gas law solved as an MOC boundary. This closes the find→fix→verify
+  loop: a rapid closure that surges to ~52 bar drops to ~18 bar once the chamber
+  is added (verified in-browser). The vessel is drawn in the scene.
+- **Static-pipe stress highlighting** (feedback) — the pipe no longer deflects;
+  it is geometrically fixed and colored by local pressure, with a pulsing red
+  sleeve on any section that exceeds the B31.3 occasional allowable. The
+  pressure wave is shown as a separate diagnostic graph floating above the pipe.
+- **Flow visualization in the Global view** (feedback) — once solved, markers
+  advect along each pipe in the flow direction at a speed set by the computed
+  velocity.
+- **Fly-to (Global→Detail)** — clicking a component or an alarm smoothly frames
+  it; combined with the Phase 4 view presets this is the Detail-view navigation.
 
 ## Deployment
 

@@ -262,6 +262,19 @@ button.wide {
 .chart-legend .dot.ref { background: #5a6472; }
 .chart-legend .dot.drop { background: #3a9bdc; }
 
+button.active {
+  background: #2b6cff;
+  border-color: #2b6cff;
+}
+
+.section p.warn.click {
+  cursor: pointer;
+}
+
+.section p.warn.click:hover {
+  color: #ffb4a0;
+}
+
 .navbar {
   padding-top: 10px;
 }

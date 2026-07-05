@@ -52,6 +52,22 @@ export interface WaterHammerConfig {
    * Joukowsky comparison).
    */
   vaporHead?: number;
+  /**
+   * Optional surge-protection air chamber (air vessel) installed just upstream
+   * of the valve. The trapped gas cushions the surge: liquid flows into the
+   * vessel as the pressure rises, compressing the gas per a polytropic law
+   * P*Vg^n = const. This is the "fix" in the find-fix-verify design loop.
+   */
+  airChamber?: {
+    /** Initial trapped-gas volume [m^3]. */
+    gasVolume: number;
+    /** Polytropic exponent n (1.0 isothermal … 1.4 adiabatic; ~1.2 typical). */
+    polytropic: number;
+    /** Vessel/pipe elevation [m] (pressure datum). */
+    elevation: number;
+    /** Atmospheric pressure head [m] (absolute-pressure offset). */
+    barometricHead: number;
+  };
 }
 
 export class WaterHammerSim {
@@ -79,6 +95,15 @@ export class WaterHammerSim {
   private readonly waveSpeedValue: number;
   private readonly valveConst: number; // (Cd Av)^2 at full open
   private readonly vaporHead: number | null;
+
+  // Air chamber (surge vessel) state, active only when configured.
+  private readonly airChamber: WaterHammerConfig['airChamber'] | null;
+  private chamberC0 = 0; // gas law constant P_abs * Vg^n
+  /** Current trapped-gas volume [m^3] (0 when no chamber). */
+  gasVolume = 0;
+  private chamberFlowPrev = 0; // previous flow into the chamber [m^3/s]
+  private gasVolumeNext = 0;
+  private chamberFlowNext = 0;
 
   // Upstream-face flow (differs from Q only at an open cavity).
   private QU: Float64Array;
@@ -122,6 +147,14 @@ export class WaterHammerSim {
     // the steady valve head — the sim therefore starts exactly in balance.
     const valveHeadSteady = this.H[this.nodes - 1];
     this.valveConst = valveHeadSteady > 0 ? (this.Q0 * this.Q0) / valveHeadSteady : 0;
+
+    // Air chamber: initial gas law constant from the steady absolute pressure.
+    this.airChamber = cfg.airChamber ?? null;
+    if (this.airChamber) {
+      this.gasVolume = this.airChamber.gasVolume;
+      const absHeadSteady = valveHeadSteady - this.airChamber.elevation + this.airChamber.barometricHead;
+      this.chamberC0 = absHeadSteady * Math.pow(this.gasVolume, this.airChamber.polytropic);
+    }
   }
 
   /** Joukowsky instantaneous-closure surge [m]: dH = a*V0/g = B*Q0. */
@@ -190,44 +223,84 @@ export class WaterHammerSim {
     QUn[0] = q0;
     cavN[0] = 0;
 
-    // Downstream valve: C+ characteristic combined with the discharge law
-    // Q = sqrt(cs * H), cs = valveConst * tau^2. Solving the quadratic in Q:
-    //   Q^2 + cs*B*Q - cs*C_P = 0
+    // Downstream boundary: C+ characteristic from the last interior reach.
     const cp = H[N - 1] + B * Q[N - 1] - R * Q[N - 1] * Math.abs(Q[N - 1]);
     const cs = this.valveConst * tau * tau;
-    let qv: number;
-    let hValve: number;
-    if (cs <= 0) {
-      qv = 0;
-      hValve = cp;
-    } else {
-      qv = -0.5 * cs * B + Math.sqrt(0.25 * cs * cs * B * B + cs * cp);
-      hValve = cp - B * qv;
-    }
 
-    // Column separation at the valve (classic location): if the valve head
-    // would fall below vapor, pin it and open a cavity between the valve and
-    // the arriving liquid column. The valve cannot discharge under vacuum, so
-    // its downstream-face flow is zero while the cavity is open.
-    if (hv !== null && (hValve < hv || cavityVolume[N] > 0)) {
-      const qu = (cp - hv) / B; // upstream-face flow from C+
-      const vol = cavityVolume[N] + (0 - qu) * dt;
-      if (vol <= 0) {
-        cavN[N] = 0;
+    if (this.airChamber) {
+      // Surge vessel just upstream of the valve. Node continuity:
+      //   Q_pipe = Q_valve + Q_chamber, with Q_pipe = (cp - H)/B,
+      //   Q_valve = sqrt(cs*H), gas law H_abs*Vg^n = C0, and
+      //   Q_chamber from the trapezoidal volume change. One nonlinear equation
+      //   in H, solved by bisection (the residual is monotonic in H).
+      const ac = this.airChamber;
+      const n = ac.polytropic;
+      const off = ac.barometricHead - ac.elevation; // H_abs = H + off
+      const vgOf = (h: number) => Math.pow(this.chamberC0 / Math.max(h + off, 1e-3), 1 / n);
+      const residual = (h: number) => {
+        const vg = vgOf(h);
+        const qCham = (2 * (this.gasVolume - vg)) / dt - this.chamberFlowPrev;
+        const qValve = cs > 0 && h > 0 ? Math.sqrt(cs * h) : 0;
+        const qPipe = (cp - h) / B;
+        return qPipe - qValve - qCham;
+      };
+
+      let lo = 0.1;
+      let hi = Math.max(cp, this.H0) + 1000;
+      for (let it = 0; it < 60; it++) {
+        const mid = 0.5 * (lo + hi);
+        // residual is monotonically decreasing in h.
+        if (residual(mid) > 0) lo = mid;
+        else hi = mid;
+      }
+      const hN = 0.5 * (lo + hi);
+      const vg = vgOf(hN);
+      const qCham = (2 * (this.gasVolume - vg)) / dt - this.chamberFlowPrev;
+      const qValve = cs > 0 && hN > 0 ? Math.sqrt(cs * hN) : 0;
+
+      Hn[N] = hN;
+      QUn[N] = (cp - hN) / B; // flow arriving from the pipe
+      Qn[N] = qValve; // flow discharged through the valve
+      cavN[N] = 0;
+      this.gasVolumeNext = vg;
+      this.chamberFlowNext = qCham;
+    } else {
+      // Plain valve, with column separation (DVCM) at the valve.
+      let qv: number;
+      let hValve: number;
+      if (cs <= 0) {
+        qv = 0;
+        hValve = cp;
+      } else {
+        qv = -0.5 * cs * B + Math.sqrt(0.25 * cs * cs * B * B + cs * cp);
+        hValve = cp - B * qv;
+      }
+
+      if (hv !== null && (hValve < hv || cavityVolume[N] > 0)) {
+        const qu = (cp - hv) / B; // upstream-face flow from C+
+        const vol = cavityVolume[N] + (0 - qu) * dt;
+        if (vol <= 0) {
+          cavN[N] = 0;
+          Qn[N] = qv;
+          QUn[N] = qv;
+          Hn[N] = hValve;
+        } else {
+          cavN[N] = vol;
+          Hn[N] = hv;
+          QUn[N] = qu;
+          Qn[N] = 0;
+        }
+      } else {
         Qn[N] = qv;
         QUn[N] = qv;
         Hn[N] = hValve;
-      } else {
-        cavN[N] = vol;
-        Hn[N] = hv;
-        QUn[N] = qu;
-        Qn[N] = 0;
+        cavN[N] = 0;
       }
-    } else {
-      Qn[N] = qv;
-      QUn[N] = qv;
-      Hn[N] = hValve;
-      cavN[N] = 0;
+    }
+
+    if (this.airChamber) {
+      this.gasVolume = this.gasVolumeNext;
+      this.chamberFlowPrev = this.chamberFlowNext;
     }
 
     this.H.set(Hn);

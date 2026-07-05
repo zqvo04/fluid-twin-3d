@@ -13,6 +13,7 @@ import { useAppStore } from '../ui/store';
 import { PipelineNetwork, nodeById, PipeLink } from '../domain/network';
 import { pipeGeometry } from '../domain/catalog/pipes';
 import { rampColor, normalize } from './colormap';
+import { flyTo } from './cameraControl';
 
 const UP = new Vector3(0, 1, 0);
 
@@ -94,7 +95,11 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
     e.stopPropagation();
     if (e.instanceId === undefined) return;
     const link = links[e.instanceId];
-    if (link) select(link.id);
+    if (!link) return;
+    select(link.id);
+    const a = nodeById(network, link.from).position;
+    const b = nodeById(network, link.to).position;
+    flyTo((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, 4);
   };
 
   return (

@@ -12,6 +12,8 @@ import { PipelineNetwork, NetworkNode, NetworkLink, nodeById } from '../domain/n
 import { pipeGeometry } from '../domain/catalog/pipes';
 import { rampColor, normalize } from './colormap';
 import { InstancedPipes } from './InstancedPipes';
+import { FlowParticles } from './FlowParticles';
+import { flyTo } from './cameraControl';
 
 const UP = new Vector3(0, 1, 0);
 
@@ -53,6 +55,7 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
       onClick={(e) => {
         e.stopPropagation();
         select(link.id);
+        flyTo(mid.x, mid.y, mid.z, Math.max(2, length * 0.6));
       }}
     >
       <mesh position={mid} quaternion={quat}>
@@ -96,6 +99,7 @@ function NodeMesh({ node }: { node: NetworkNode }) {
       onClick={(e) => {
         e.stopPropagation();
         select(node.id);
+        flyTo(node.position.x, node.position.y, node.position.z, 3);
       }}
     >
       {isReservoir ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.24, 14, 14]} />}
@@ -125,6 +129,7 @@ function SelectionHighlight({ net }: { net: PipelineNetwork }) {
 
 export function NetworkView() {
   const network = useAppStore((s) => s.network);
+  const flowViz = useAppStore((s) => s.flowViz);
   const components = useMemo(
     () => network.links.filter((l) => l.kind === 'valve' || l.kind === 'pump'),
     [network],
@@ -140,6 +145,7 @@ export function NetworkView() {
         <NodeMesh key={n.id} node={n} />
       ))}
       <SelectionHighlight net={network} />
+      {flowViz && <FlowParticles network={network} />}
     </group>
   );
 }

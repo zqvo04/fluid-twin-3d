@@ -41,6 +41,17 @@ export function registerCameraControls(c: CamControls | null, bounds: () => Scen
   boundsFn = bounds;
 }
 
+/**
+ * Fly the camera to focus a point (a selected component). This is the core of
+ * the Global→Detail transition: click a component or an alarm and the camera
+ * smoothly frames it.
+ */
+export function flyTo(x: number, y: number, z: number, focusRadius = 4) {
+  if (!instance) return;
+  const d = Math.max(focusRadius, 1.5) * 3.2;
+  instance.setLookAt(x + d * 0.6, y + d * 0.5, z + d * 0.6, x, y, z, true);
+}
+
 export function applyPreset(preset: ViewPreset) {
   if (!instance) return;
   const { cx, cy, cz, radius } = boundsFn();

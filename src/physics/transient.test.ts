@@ -156,6 +156,70 @@ describe('MOC column separation (DVCM cavitation)', () => {
   });
 });
 
+describe('surge protection — air chamber', () => {
+  function baseCfg(): WaterHammerConfig {
+    const diameter = 0.3;
+    const area = (Math.PI / 4) * diameter * diameter;
+    return {
+      length: 500,
+      diameter,
+      area,
+      waveSpeed: 1200,
+      frictionFactor: 0.015,
+      reservoirHead: 120,
+      initialFlow: 1.5 * area, // V0 = 1.5 m/s
+      segments: 32,
+    };
+  }
+
+  function peakSurge(cfg: WaterHammerConfig): number {
+    const sim = new WaterHammerSim(cfg);
+    let peak = -Infinity;
+    const closeSteps = 5; // near-instantaneous closure
+    for (let i = 0; i < 600; i++) {
+      const tau = Math.max(0, 1 - i / closeSteps);
+      sim.step(tau);
+      peak = Math.max(peak, sim.H[sim.nodes - 1]);
+    }
+    return peak - cfg.reservoirHead;
+  }
+
+  it('cuts the peak surge well below the unprotected Joukowsky value', () => {
+    const bare = baseCfg();
+    const protectedCfg: WaterHammerConfig = {
+      ...baseCfg(),
+      airChamber: { gasVolume: 0.5, polytropic: 1.2, elevation: 0, barometricHead: 10.33 },
+    };
+
+    const sim = new WaterHammerSim(bare);
+    const joukowsky = sim.joukowskyHead();
+
+    const bareSurge = peakSurge(bare);
+    const protectedSurge = peakSurge(protectedCfg);
+
+    // Unprotected line surges near Joukowsky; the chamber must cut it sharply.
+    expect(bareSurge).toBeGreaterThan(0.7 * joukowsky);
+    expect(protectedSurge).toBeLessThan(0.5 * bareSurge);
+  });
+
+  it('keeps the vessel gas volume bounded and positive', () => {
+    const cfg: WaterHammerConfig = {
+      ...baseCfg(),
+      airChamber: { gasVolume: 0.5, polytropic: 1.2, elevation: 0, barometricHead: 10.33 },
+    };
+    const sim = new WaterHammerSim(cfg);
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (let i = 0; i < 600; i++) {
+      sim.step(Math.max(0, 1 - i / 5));
+      minV = Math.min(minV, sim.gasVolume);
+      maxV = Math.max(maxV, sim.gasVolume);
+    }
+    expect(minV).toBeGreaterThan(0);
+    expect(maxV).toBeLessThan(2); // gas compresses/expands but stays physical
+  });
+});
+
 describe('Korteweg wave speed', () => {
   it('is below the free-fluid sound speed and rises with wall stiffness', () => {
     const K = 2.18e9;
