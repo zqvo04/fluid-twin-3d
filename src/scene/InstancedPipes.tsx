@@ -42,7 +42,7 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
       const len = dir.length();
       dummy.position.copy(av).add(bv).multiplyScalar(0.5);
       dummy.quaternion.copy(new Quaternion().setFromUnitVectors(UP, dir.clone().normalize()));
-      const radius = Math.max(0.05, pipeGeometry(link.nps, link.schedule).od * 1.4);
+      const radius = Math.max(0.16, pipeGeometry(link.nps, link.schedule).od * 2.6);
       dummy.scale.set(radius, len, radius);
       dummy.updateMatrix();
       out.push(new Float32Array(dummy.matrix.elements));

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Vector3, Quaternion, Mesh, Line, LineBasicMaterial, BufferGeometry, BufferAttribute } from 'three';
+import { Vector3, Quaternion, Mesh } from 'three';
 import { ThreeEvent } from '@react-three/fiber';
 import { useAppStore } from '../ui/store';
 import { PipelineNetwork, NetworkNode, NetworkLink, nodeById } from '../domain/network';
@@ -49,7 +49,7 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
   const { mid, quat, length } = orient(nodeById(net, link.from), nodeById(net, link.to));
 
   const radius =
-    link.kind === 'valve' ? Math.max(0.06, pipeGeometry(link.nps, link.schedule).od * 1.4) : 0.14;
+    link.kind === 'valve' ? Math.max(0.16, pipeGeometry(link.nps, link.schedule).od * 2.6) : 0.28;
   const color = headColor(result, link.from, link.to);
 
   return (
@@ -129,10 +129,10 @@ function NodeMesh({ node }: { node: NetworkNode }) {
 }
 
 /**
- * Ground plane + build affordances. Captures clicks to place nodes (or extend a
- * Pipe Run) at the current elevation, snapped to a 1 m grid. Shows a ghost
- * marker following the cursor and, while a run is in progress, a rubber-band
- * line from the last node to the cursor — so building feels like drawing.
+ * Ground plane + build affordances (a Minecraft-style block cursor). A glowing
+ * grid cell follows the cursor, a ghost of the component-to-place hovers in it,
+ * and during a Pipe Run a ghost pipe previews the next segment from the last
+ * node — so building feels like placing blocks and drawing pipe.
  */
 function EditPlane() {
   const editMode = useAppStore((s) => s.editMode);
@@ -143,14 +143,12 @@ function EditPlane() {
   const runFrom = useAppStore((s) => s.runFrom);
   const network = useAppStore((s) => s.network);
 
-  const ghostRef = useRef<Mesh>(null);
-  const rubber = useMemo(() => {
-    const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(new Float32Array(6), 3));
-    return new Line(g, new LineBasicMaterial({ color: '#ffd24d' }));
-  }, []);
+  const cursorRef = useRef<Mesh>(null); // grid-cell tile
+  const ghostNodeRef = useRef<Mesh>(null); // ghost component to place
+  const ghostPipeRef = useRef<Mesh>(null); // ghost pipe during a run
 
   const isRun = editTool === 'run';
+  const isTank = editTool === 'place-reservoir';
   const active = editMode && (editTool.startsWith('place') || isRun);
   if (!active) return null;
 
@@ -159,12 +157,20 @@ function EditPlane() {
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     const x = Math.round(e.point.x);
     const z = Math.round(e.point.z);
-    if (ghostRef.current) ghostRef.current.position.set(x, buildElevation, z);
-    if (isRun && runFromNode) {
-      const pos = rubber.geometry.getAttribute('position') as BufferAttribute;
-      pos.setXYZ(0, runFromNode.position.x, runFromNode.position.y, runFromNode.position.z);
-      pos.setXYZ(1, x, buildElevation, z);
-      pos.needsUpdate = true;
+    if (cursorRef.current) cursorRef.current.position.set(x, buildElevation + 0.02, z);
+    if (ghostNodeRef.current) ghostNodeRef.current.position.set(x, buildElevation, z);
+    const gp = ghostPipeRef.current;
+    if (gp && isRun && runFromNode) {
+      const a = new Vector3(runFromNode.position.x, runFromNode.position.y, runFromNode.position.z);
+      const b = new Vector3(x, buildElevation, z);
+      const dir = b.clone().sub(a);
+      const len = dir.length() || 0.001;
+      gp.position.copy(a).add(b).multiplyScalar(0.5);
+      gp.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      gp.scale.set(0.3, len, 0.3);
+      gp.visible = true;
+    } else if (gp) {
+      gp.visible = false;
     }
   };
 
@@ -182,16 +188,28 @@ function EditPlane() {
         }}
       >
         <planeGeometry args={[400, 400]} />
-        <meshBasicMaterial transparent opacity={0.05} color="#2b6cff" />
+        <meshBasicMaterial transparent opacity={0.04} color="#2b6cff" />
       </mesh>
 
-      {/* Ghost placement marker following the cursor. */}
-      <mesh ref={ghostRef} position={[0, buildElevation, 0]}>
-        <sphereGeometry args={[0.42, 16, 16]} />
-        <meshStandardMaterial color="#ffd24d" emissive="#ffd24d" emissiveIntensity={0.5} transparent opacity={0.55} />
+      {/* Glowing grid-cell cursor. */}
+      <mesh ref={cursorRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, buildElevation + 0.02, 0]}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#ffd24d" transparent opacity={0.35} />
       </mesh>
 
-      {isRun && runFromNode && <primitive object={rubber} />}
+      {/* Ghost of the component to place (tank cube / junction sphere). */}
+      <mesh ref={ghostNodeRef} position={[0, buildElevation, 0]}>
+        {isTank ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.4, 16, 16]} />}
+        <meshStandardMaterial color="#ffd24d" emissive="#ffd24d" emissiveIntensity={0.5} transparent opacity={0.5} />
+      </mesh>
+
+      {/* Ghost pipe preview during a run. */}
+      {isRun && (
+        <mesh ref={ghostPipeRef} visible={false}>
+          <cylinderGeometry args={[1, 1, 1, 12]} />
+          <meshStandardMaterial color="#ffd24d" emissive="#ffd24d" emissiveIntensity={0.4} transparent opacity={0.45} />
+        </mesh>
+      )}
     </group>
   );
 }
