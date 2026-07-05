@@ -5,8 +5,9 @@
  * than a bare graph. The selected pipe gets a highlight overlay.
  */
 
-import { useMemo } from 'react';
-import { Vector3, Quaternion } from 'three';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Vector3, Quaternion, Mesh, Line, LineBasicMaterial, BufferGeometry, BufferAttribute } from 'three';
+import { ThreeEvent } from '@react-three/fiber';
 import { useAppStore } from '../ui/store';
 import { PipelineNetwork, NetworkNode, NetworkLink, nodeById } from '../domain/network';
 import { pipeGeometry } from '../domain/catalog/pipes';
@@ -94,9 +95,10 @@ function NodeMesh({ node }: { node: NetworkNode }) {
   const handleNodeClick = useAppStore((s) => s.handleNodeClick);
   const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === node.id);
-  const isConnectFrom = useAppStore((s) => s.connectFrom === node.id);
+  const isAnchor = useAppStore((s) => s.connectFrom === node.id || s.runFrom === node.id);
+  const [hovered, setHovered] = useState(false);
   const isReservoir = node.type === 'reservoir';
-  const highlight = selected || isConnectFrom;
+  const highlight = selected || isAnchor || hovered;
   return (
     <mesh
       position={[node.position.x, node.position.y, node.position.z]}
@@ -105,45 +107,92 @@ function NodeMesh({ node }: { node: NetworkNode }) {
         handleNodeClick(node.id);
         if (!editMode) flyTo(node.position.x, node.position.y, node.position.z, 3);
       }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={() => {
+        setHovered(false);
+        document.body.style.cursor = 'default';
+      }}
+      scale={hovered ? 1.25 : 1}
     >
       {isReservoir ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.32, 16, 16]} />}
       <meshStandardMaterial
-        color={isConnectFrom ? '#ffd24d' : isReservoir ? '#3aa0a0' : '#c0c4cc'}
+        color={isAnchor ? '#ffd24d' : isReservoir ? '#3aa0a0' : '#c0c4cc'}
         emissive={highlight ? '#ffffff' : '#000000'}
-        emissiveIntensity={highlight ? 0.5 : 0}
+        emissiveIntensity={highlight ? 0.55 : 0}
       />
     </mesh>
   );
 }
 
 /**
- * Invisible ground plane that captures clicks in build mode to place nodes at
- * the current build elevation, snapped to a 1 m grid.
+ * Ground plane + build affordances. Captures clicks to place nodes (or extend a
+ * Pipe Run) at the current elevation, snapped to a 1 m grid. Shows a ghost
+ * marker following the cursor and, while a run is in progress, a rubber-band
+ * line from the last node to the cursor — so building feels like drawing.
  */
 function EditPlane() {
   const editMode = useAppStore((s) => s.editMode);
   const editTool = useAppStore((s) => s.editTool);
   const buildElevation = useAppStore((s) => s.buildElevation);
   const placeNodeAt = useAppStore((s) => s.placeNodeAt);
-  const active = editMode && editTool.startsWith('place');
+  const runClickAt = useAppStore((s) => s.runClickAt);
+  const runFrom = useAppStore((s) => s.runFrom);
+  const network = useAppStore((s) => s.network);
+
+  const ghostRef = useRef<Mesh>(null);
+  const rubber = useMemo(() => {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(new Float32Array(6), 3));
+    return new Line(g, new LineBasicMaterial({ color: '#ffd24d' }));
+  }, []);
+
+  const isRun = editTool === 'run';
+  const active = editMode && (editTool.startsWith('place') || isRun);
   if (!active) return null;
 
+  const runFromNode = runFrom ? network.nodes.find((n) => n.id === runFrom) : null;
+
+  const onMove = (e: ThreeEvent<PointerEvent>) => {
+    const x = Math.round(e.point.x);
+    const z = Math.round(e.point.z);
+    if (ghostRef.current) ghostRef.current.position.set(x, buildElevation, z);
+    if (isRun && runFromNode) {
+      const pos = rubber.geometry.getAttribute('position') as BufferAttribute;
+      pos.setXYZ(0, runFromNode.position.x, runFromNode.position.y, runFromNode.position.z);
+      pos.setXYZ(1, x, buildElevation, z);
+      pos.needsUpdate = true;
+    }
+  };
+
   return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[10, buildElevation, 0]}
-      onClick={(e) => {
-        e.stopPropagation();
-        placeNodeAt({
-          x: Math.round(e.point.x),
-          y: buildElevation,
-          z: Math.round(e.point.z),
-        });
-      }}
-    >
-      <planeGeometry args={[400, 400]} />
-      <meshBasicMaterial transparent opacity={0.06} color="#2b6cff" />
-    </mesh>
+    <group>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[10, buildElevation, 0]}
+        onPointerMove={onMove}
+        onClick={(e) => {
+          e.stopPropagation();
+          const pos = { x: Math.round(e.point.x), y: buildElevation, z: Math.round(e.point.z) };
+          if (isRun) runClickAt(pos);
+          else placeNodeAt(pos);
+        }}
+      >
+        <planeGeometry args={[400, 400]} />
+        <meshBasicMaterial transparent opacity={0.05} color="#2b6cff" />
+      </mesh>
+
+      {/* Ghost placement marker following the cursor. */}
+      <mesh ref={ghostRef} position={[0, buildElevation, 0]}>
+        <sphereGeometry args={[0.42, 16, 16]} />
+        <meshStandardMaterial color="#ffd24d" emissive="#ffd24d" emissiveIntensity={0.5} transparent opacity={0.55} />
+      </mesh>
+
+      {isRun && runFromNode && <primitive object={rubber} />}
+    </group>
   );
 }
 
@@ -169,6 +218,15 @@ export function NetworkView() {
     () => network.links.filter((l) => l.kind === 'valve' || l.kind === 'pump'),
     [network],
   );
+
+  // Esc ends an in-progress Pipe Run / connection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') useAppStore.getState().cancelBuild();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <group>

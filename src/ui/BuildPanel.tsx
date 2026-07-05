@@ -10,10 +10,11 @@ import { NOMINAL_SIZES, NominalSize, Schedule } from '../domain/catalog/pipes';
 import { VALVE_TYPES, ValveType } from '../domain/catalog/valves';
 
 const TOOLS: { id: EditTool; label: string; hint: string }[] = [
-  { id: 'select', label: 'Select', hint: 'Click a component to edit it.' },
-  { id: 'place-junction', label: '+ Junction', hint: 'Click the ground to drop a junction.' },
+  { id: 'run', label: '✏ Pipe Run', hint: 'Click points on the ground to draw a connected run. Snaps to nearby nodes. Esc to finish.' },
   { id: 'place-reservoir', label: '+ Tank', hint: 'Click the ground to drop a tank/reservoir.' },
+  { id: 'place-junction', label: '+ Junction', hint: 'Click the ground to drop a junction.' },
   { id: 'connect', label: 'Connect', hint: 'Click two nodes to join them with a component.' },
+  { id: 'select', label: 'Select', hint: 'Click a component to edit it.' },
   { id: 'delete', label: 'Delete', hint: 'Click a node or component to remove it.' },
 ];
 
@@ -152,7 +153,7 @@ export function BuildPanel() {
       </div>
       <p className="hint">{connectFrom && editTool === 'connect' ? 'Now click the second node…' : hint}</p>
 
-      {editTool.startsWith('place') && (
+      {(editTool.startsWith('place') || editTool === 'run') && (
         <label className="ef">
           <span>Place elevation (m)</span>
           <input
@@ -164,7 +165,7 @@ export function BuildPanel() {
         </label>
       )}
 
-      {editTool === 'connect' && (
+      {(editTool === 'connect' || editTool === 'run') && (
         <div className="predict" style={{ marginTop: 8 }}>
           <label className="ef">
             <span>New component</span>
