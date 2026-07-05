@@ -4,6 +4,7 @@
  * physically meaningful rather than arbitrary.
  */
 
+import { G, ATM } from '../domain/units';
 import { waterProperties } from '../domain/fluid';
 import { pipeGeometry, A106B, NominalSize, Schedule } from '../domain/catalog/pipes';
 import { reynolds, churchillFriction } from '../physics/friction';
@@ -18,6 +19,8 @@ export interface LabInputs {
   velocity: number; // m/s (initial steady velocity)
   tempC: number;
   segments: number;
+  /** Pipe centerline elevation [m] (the vapor-head datum). */
+  pipeElevation: number;
 }
 
 export const DEFAULT_LAB_INPUTS: LabInputs = {
@@ -28,6 +31,7 @@ export const DEFAULT_LAB_INPUTS: LabInputs = {
   velocity: 2.0,
   tempC: 20,
   segments: 48,
+  pipeElevation: 0,
 };
 
 export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): WaterHammerConfig {
@@ -39,6 +43,10 @@ export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): W
   const re = reynolds(flow, geo.id, fluid.rho, fluid.mu);
   const f = churchillFriction(re, A106B.roughness / geo.id);
 
+  // Total-head level at which absolute pressure reaches vapor pressure at the
+  // pipe elevation: H_vapor = z + (p_vapor - p_atm) / (rho*g).
+  const vaporHead = input.pipeElevation + (fluid.pv - ATM) / (fluid.rho * G);
+
   return {
     length: input.length,
     diameter: geo.id,
@@ -48,5 +56,6 @@ export function buildWaterHammerConfig(input: LabInputs = DEFAULT_LAB_INPUTS): W
     reservoirHead: input.reservoirHead,
     initialFlow: flow,
     segments: input.segments,
+    vaporHead,
   };
 }

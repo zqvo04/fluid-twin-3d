@@ -85,10 +85,14 @@ export interface TransientFrame {
   head: Float32Array;
   maxEnvelope: Float32Array;
   minEnvelope: Float32Array;
+  /** Vapor cavity volume [m^3] at each node (0 = intact liquid). */
+  cavity: Float32Array;
   valveHead: number;
   reservoirHead: number;
   joukowsky: number;
   wavePeriod: number;
+  /** Peak cavity volume seen anywhere over the whole run [m^3]. */
+  peakCavity: number;
   done: boolean;
 }
 

@@ -34,6 +34,7 @@ export function WaterHammerScene() {
   const nodeCount = segments + 1;
 
   const meshRef = useRef<InstancedMesh>(null);
+  const cavRef = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
   const color = useMemo(() => new Color(), []);
 
@@ -58,7 +59,20 @@ export function WaterHammerScene() {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.count = segments;
-  }, [segments, xs, dummy, color]);
+
+    // Start all cavitation bubbles hidden (scaled to zero).
+    const cav = cavRef.current;
+    if (cav) {
+      dummy.scale.set(0, 0, 0);
+      dummy.rotation.set(0, 0, 0);
+      for (let i = 0; i < nodeCount; i++) {
+        dummy.position.set(xs[i], BASE_Y, 0);
+        dummy.updateMatrix();
+        cav.setMatrixAt(i, dummy.matrix);
+      }
+      cav.instanceMatrix.needsUpdate = true;
+    }
+  }, [segments, nodeCount, xs, dummy, color]);
 
   // Wave profile line (current head) and peak-envelope line. Built as THREE.Line
   // objects and mounted via <primitive> to avoid the R3F <line> / SVG collision.
@@ -105,6 +119,22 @@ export function WaterHammerScene() {
     }
     wavePos.needsUpdate = true;
     envPos.needsUpdate = true;
+
+    // Cavitation bubbles: a sphere at each node with an open vapor cavity,
+    // sized by cavity volume. Nodes without a cavity are scaled to zero.
+    const cav = cavRef.current;
+    if (cav && frame.cavity && frame.cavity.length === nodeCount) {
+      for (let i = 0; i < nodeCount; i++) {
+        const v = frame.cavity[i];
+        const s = v > 1e-7 ? Math.min(1.6, 0.4 + Math.cbrt(v) * 2.2) : 0;
+        dummy.position.set(xs[i], BASE_Y + (head[i] - reservoirHead) * HEIGHT_SCALE, 0);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(s, s, s);
+        dummy.updateMatrix();
+        cav.setMatrixAt(i, dummy.matrix);
+      }
+      cav.instanceMatrix.needsUpdate = true;
+    }
   });
 
   return (
@@ -123,6 +153,12 @@ export function WaterHammerScene() {
       <instancedMesh ref={meshRef} args={[undefined, undefined, segments]}>
         <cylinderGeometry args={[1, 1, 1, 14]} />
         <meshStandardMaterial metalness={0.25} roughness={0.55} />
+      </instancedMesh>
+
+      {/* Cavitation bubbles (vapor cavities). */}
+      <instancedMesh ref={cavRef} args={[undefined, undefined, nodeCount]}>
+        <sphereGeometry args={[1, 12, 12]} />
+        <meshStandardMaterial color="#eaf6ff" emissive="#a9d8ff" emissiveIntensity={0.6} transparent opacity={0.85} />
       </instancedMesh>
 
       {/* Live wave profile (current head) and peak-head envelope ribbon. */}

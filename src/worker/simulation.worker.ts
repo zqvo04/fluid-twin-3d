@@ -32,6 +32,7 @@ function runTransient(req: StartTransientRequest) {
   // Per-node running envelope of head extremes over the whole run.
   const maxEnv = Float32Array.from(sim.H);
   const minEnv = Float32Array.from(sim.H);
+  let peakCavity = 0;
 
   const tick = () => {
     for (let k = 0; k < req.stepsPerFrame; k++) {
@@ -40,6 +41,7 @@ function runTransient(req: StartTransientRequest) {
       for (let i = 0; i < sim.nodes; i++) {
         if (sim.H[i] > maxEnv[i]) maxEnv[i] = sim.H[i];
         if (sim.H[i] < minEnv[i]) minEnv[i] = sim.H[i];
+        if (sim.cavityVolume[i] > peakCavity) peakCavity = sim.cavityVolume[i];
       }
     }
 
@@ -48,6 +50,7 @@ function runTransient(req: StartTransientRequest) {
     const head = Float32Array.from(sim.H);
     const maxCopy = Float32Array.from(maxEnv);
     const minCopy = Float32Array.from(minEnv);
+    const cavity = Float32Array.from(sim.cavityVolume);
     const frame: WorkerResponse = {
       type: 'TRANSIENT_FRAME',
       requestId: req.requestId,
@@ -56,13 +59,15 @@ function runTransient(req: StartTransientRequest) {
       head,
       maxEnvelope: maxCopy,
       minEnvelope: minCopy,
+      cavity,
       valveHead: sim.H[sim.nodes - 1],
       reservoirHead: req.config.reservoirHead,
       joukowsky,
       wavePeriod: period,
+      peakCavity,
       done,
     };
-    ctx.postMessage(frame, [head.buffer, maxCopy.buffer, minCopy.buffer]);
+    ctx.postMessage(frame, [head.buffer, maxCopy.buffer, minCopy.buffer, cavity.buffer]);
 
     if (done) {
       transientTimer = null;

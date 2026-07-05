@@ -12,10 +12,31 @@ import { paToBar, headToPressure } from '../domain/units';
 import { serializeProject, deserializeProject } from '../domain/serialize';
 import { checkConnectors } from '../domain/connectivity';
 import { analyzePumpDuty, PumpDuty } from '../analysis/pumpDuty';
+import { analyzeNetworkVulnerability } from '../analysis/networkVulnerability';
+import { waterProperties } from '../domain/fluid';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { gridNetwork } from '../examples/largeNetwork';
 import { WaterHammerPanel } from './WaterHammerPanel';
 import { PipelineNetwork, ValidationIssue } from '../domain/network';
+import { applyPreset, ViewPreset } from '../scene/cameraControl';
+
+const VIEW_PRESETS: ViewPreset[] = ['fit', 'iso', 'top', 'front', 'side'];
+
+function NavBar() {
+  return (
+    <div className="section navbar">
+      <h2>View</h2>
+      <div className="preset-row">
+        {VIEW_PRESETS.map((p) => (
+          <button key={p} onClick={() => applyPreset(p)}>
+            {p === 'fit' ? 'Fit' : p[0].toUpperCase() + p.slice(1)}
+          </button>
+        ))}
+      </div>
+      <p className="hint">Drag = orbit · Right-drag / Shift-drag = pan · Wheel = zoom · WASD/QE move · Arrows rotate</p>
+    </div>
+  );
+}
 
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: 'application/json' });
@@ -130,6 +151,20 @@ export function ControlPanel() {
   );
   const dutyWarnings = duties.filter((d) => d.status !== 'ok');
 
+  const vuln = useMemo(
+    () => (result ? analyzeNetworkVulnerability(network, result, waterProperties(network.temperatureC)) : null),
+    [network, result],
+  );
+  const vulnWarnings: string[] = [];
+  if (vuln) {
+    for (const e of vuln.erosion) {
+      vulnWarnings.push(`${e.linkId}: velocity ${e.velocity.toFixed(1)} m/s exceeds erosional limit ${e.limit.toFixed(1)} m/s (API RP 14E).`);
+    }
+    for (const n of vuln.npsh) {
+      if (!n.ok) vulnWarnings.push(`${n.linkId}: NPSH margin ${n.margin.toFixed(1)} m (avail ${n.npshAvailable.toFixed(1)} < req+margin) — cavitation risk.`);
+    }
+  }
+
   const onLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -159,6 +194,8 @@ export function ControlPanel() {
         </button>
       </div>
 
+      <NavBar />
+
       {scene === 'waterhammer' ? (
         <WaterHammerPanel />
       ) : (
@@ -175,6 +212,7 @@ export function ControlPanel() {
           onLoadFile={onLoadFile}
           dutyWarnings={dutyWarnings}
           connectorWarnings={connectorWarnings}
+          vulnWarnings={vulnWarnings}
         />
       )}
     </div>
@@ -194,6 +232,7 @@ interface NetworkControlsProps {
   onLoadFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   dutyWarnings: PumpDuty[];
   connectorWarnings: ValidationIssue[];
+  vulnWarnings: string[];
 }
 
 function NetworkControls({
@@ -209,6 +248,7 @@ function NetworkControls({
   onLoadFile,
   dutyWarnings,
   connectorWarnings,
+  vulnWarnings,
 }: NetworkControlsProps) {
   return (
     <>
@@ -257,11 +297,14 @@ function NetworkControls({
         <div className="kv"><span>Fluid temp</span><span>{network.temperatureC} °C</span></div>
       </div>
 
-      {(dutyWarnings.length > 0 || connectorWarnings.length > 0) && (
+      {(dutyWarnings.length > 0 || connectorWarnings.length > 0 || vulnWarnings.length > 0) && (
         <div className="section">
           <h2>Warnings</h2>
           {dutyWarnings.map((d) => (
             <p key={d.linkId} className="warn">⚠ {d.linkId}: {d.message}</p>
+          ))}
+          {vulnWarnings.map((w, i) => (
+            <p key={`v${i}`} className="warn">⚠ {w}</p>
           ))}
           {connectorWarnings.slice(0, 4).map((w, i) => (
             <p key={i} className="warn">⚠ {w.message}</p>
