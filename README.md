@@ -18,6 +18,7 @@ the full physics/architecture design and the 7-phase roadmap.
 | **3** | Transient MOC water-hammer engine + streamed Water Hammer Lab | ✅ done |
 | **4** | Vulnerability analysis (cavitation, B31.3, NPSH, erosion) + navigation | ✅ done |
 | **5** | Surge-protection design loop, flow viz, fly-to, static-pipe highlight | ✅ done |
+| **B** | Interactive 3D pipeline builder (place / connect / edit / delete) | ✅ done |
 | 6 | Engineering reports + example plants | next |
 
 ## What Phase 1 delivers
@@ -113,6 +114,24 @@ verdicts, plus assembly-friendly navigation:
   velocity.
 - **Fly-to (Global→Detail)** — clicking a component or an alarm smoothly frames
   it; combined with the Phase 4 view presets this is the Detail-view navigation.
+
+## Interactive builder
+
+The simulator is a build-your-own-plant tool, not just a viewer. In **Build
+mode** the user:
+
+- drops **tanks/reservoirs and junctions** onto the ground (grid-snapped at a
+  chosen elevation),
+- **connects** any two nodes with a **pipe, valve, or pump** — valves cover the
+  four industrial types (gate, globe, ball, butterfly) with their real Cv/K
+  characteristics,
+- **edits** every property (node type, elevation, demand, fixed head; component
+  kind, size 2–8", Sch 40/80, valve type) through an inspector,
+- **deletes** components (cascading to incident links), or starts from a blank
+  canvas,
+
+then runs steady + vulnerability analysis on whatever they built. All editing
+is pure, immutable, and unit-tested (`domain/edit.ts`).
 
 ## Deployment
 

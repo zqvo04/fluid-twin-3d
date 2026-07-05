@@ -24,7 +24,8 @@ function pipeLinks(net: PipelineNetwork): PipeLink[] {
 export function InstancedPipes({ network }: { network: PipelineNetwork }) {
   const meshRef = useRef<InstancedMesh>(null);
   const result = useAppStore((s) => s.result);
-  const select = useAppStore((s) => s.select);
+  const handleLinkClick = useAppStore((s) => s.handleLinkClick);
+  const editMode = useAppStore((s) => s.editMode);
 
   const links = useMemo(() => pipeLinks(network), [network]);
 
@@ -96,10 +97,12 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
     if (e.instanceId === undefined) return;
     const link = links[e.instanceId];
     if (!link) return;
-    select(link.id);
-    const a = nodeById(network, link.from).position;
-    const b = nodeById(network, link.to).position;
-    flyTo((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, 4);
+    handleLinkClick(link.id);
+    if (!editMode) {
+      const a = nodeById(network, link.from).position;
+      const b = nodeById(network, link.to).position;
+      flyTo((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, 4);
+    }
   };
 
   return (

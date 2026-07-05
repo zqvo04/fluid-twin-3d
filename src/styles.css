@@ -296,3 +296,39 @@ button.active {
   color: #6a7280;
   line-height: 1.5;
 }
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.tool-grid button {
+  font-size: 11px;
+  padding: 7px 4px;
+}
+
+.ef {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.ef span {
+  color: #8a93a0;
+  font-size: 12px;
+}
+
+.ef input,
+.ef select {
+  width: 118px;
+  background: #1b2028;
+  color: #e6e9ee;
+  border: 1px solid #333c48;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 12px;
+}
