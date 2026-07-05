@@ -192,3 +192,72 @@ button.wide {
   line-height: 1.45;
   margin: 4px 0;
 }
+
+.grid2 button.active {
+  background: #2b6cff;
+  border-color: #2b6cff;
+}
+
+.predict {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #262d37;
+  border-radius: 8px;
+}
+
+.predict .kv {
+  border-bottom: none;
+  padding: 2px 0;
+}
+
+.field b.warn {
+  color: #ff7a5c;
+}
+
+.field b.ok {
+  color: #4ec98a;
+}
+
+.chart-dock {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  background: rgba(20, 24, 31, 0.9);
+  border: 1px solid #2a323d;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.chart-title {
+  font-size: 11px;
+  color: #8a93a0;
+  margin-bottom: 6px;
+}
+
+.chart canvas {
+  display: block;
+  border-radius: 6px;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #8a93a0;
+  margin-top: 6px;
+}
+
+.chart-legend .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-left: 8px;
+}
+
+.chart-legend .dot.surge { background: #ff5a4d; }
+.chart-legend .dot.ref { background: #5a6472; }
+.chart-legend .dot.drop { background: #3a9bdc; }

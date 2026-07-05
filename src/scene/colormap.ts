@@ -37,3 +37,21 @@ export function normalize(value: number, min: number, max: number): number {
   if (max - min < 1e-9) return 0.5;
   return (value - min) / (max - min);
 }
+
+/**
+ * Diverging pressure ramp centered on a reference head: values above the
+ * reference (surge) go warm toward red, below (down-surge / potential
+ * cavitation) go cool toward blue, with white near the reference. `span` is the
+ * head deviation mapped to the full extent.
+ */
+export function divergingColor(value: number, reference: number, span: number): Color {
+  const d = span > 1e-9 ? (value - reference) / span : 0;
+  const t = Math.max(-1, Math.min(1, d));
+  if (t >= 0) {
+    // white -> red
+    return new Color(1, 1 - 0.85 * t, 1 - 0.9 * t);
+  }
+  // white -> blue
+  const s = -t;
+  return new Color(1 - 0.9 * s, 1 - 0.55 * s, 1);
+}

@@ -9,9 +9,11 @@ import { create } from 'zustand';
 import { PipelineNetwork } from '../domain/network';
 import { cloneSubAssembly } from '../domain/assembly';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
+import { LabInputs, DEFAULT_LAB_INPUTS } from '../examples/waterHammerLab';
 import { SolveSteadyResponse } from '../worker/protocol';
 
 export type ViewMode = 'global' | 'detail';
+export type SceneKind = 'network' | 'waterhammer';
 
 export interface AnalysisResult {
   converged: boolean;
@@ -28,6 +30,13 @@ interface AppState {
   result: AnalysisResult | null;
   solving: boolean;
 
+  // Water Hammer Lab (transient) controls.
+  scene: SceneKind;
+  labInputs: LabInputs;
+  closureTime: number;
+  stepsPerFrame: number;
+  periods: number;
+
   setViewMode: (m: ViewMode) => void;
   select: (id: string | null) => void;
   setSolving: (v: boolean) => void;
@@ -37,6 +46,11 @@ interface AppState {
   updateValveOpening: (linkId: string, opening: number) => void;
   updatePumpSpeed: (linkId: string, ratio: number) => void;
   cloneFirstSkid: () => void;
+
+  setScene: (s: SceneKind) => void;
+  setLabInputs: (patch: Partial<LabInputs>) => void;
+  setClosureTime: (t: number) => void;
+  setStepsPerFrame: (n: number) => void;
 }
 
 /** Editing the network invalidates any prior analysis result. */
@@ -50,6 +64,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   result: null,
   solving: false,
+
+  scene: 'network',
+  labInputs: DEFAULT_LAB_INPUTS,
+  closureTime: 0.5,
+  stepsPerFrame: 2,
+  periods: 8,
 
   setViewMode: (m) => set({ viewMode: m }),
   select: (id) => set({ selectedId: id }),
@@ -95,4 +115,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     set({ ...withStaleResult(network), selectedId: null });
   },
+
+  setScene: (s) => set({ scene: s }),
+  setLabInputs: (patch) => set({ labInputs: { ...get().labInputs, ...patch } }),
+  setClosureTime: (t) => set({ closureTime: t }),
+  setStepsPerFrame: (n) => set({ stepsPerFrame: n }),
 }));

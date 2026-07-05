@@ -15,8 +15,8 @@ the full physics/architecture design and the 7-phase roadmap.
 | **0** | Scaffolding (Vite + React + R3F + Zustand + Web Worker + Vitest) | ✅ done |
 | **1** | Domain core + steady-state solver (GGA / Newton-Raphson) | ✅ done |
 | **2** | Modular assembly + InstancedMesh Global View + pump BEP warning | ✅ done |
-| 3 | Transient MOC engine + SharedArrayBuffer pipeline | next |
-| 4 | Vulnerability analysis + dynamic visualization | planned |
+| **3** | Transient MOC water-hammer engine + streamed Water Hammer Lab | ✅ done |
+| 4 | Vulnerability analysis + dynamic visualization | next |
 | 5 | Detail View, scenarios, surge-protection design loop | planned |
 | 6 | Engineering reports + example plants | planned |
 
@@ -54,12 +54,40 @@ verified against textbook benchmarks:
 - **Live parameter editing** — valve opening and pump speed sliders in the
   inspector; edits invalidate the stale result so a re-solve is one click away.
 
+## What Phase 3 adds
+
+The **Water Hammer Lab** — the canonical reservoir → pipe → valve transient,
+solved live by the Method of Characteristics:
+
+- **MOC solver** (`physics/transient.ts`) — the compressible unsteady flow
+  equations solved along characteristics at Courant number 1, with reservoir,
+  valve-closure, and friction boundary conditions. Verified against the
+  Joukowsky surge `a·V0/g`, the `4L/a` wave period, and gradual-closure
+  attenuation.
+- **Korteweg wave speed** — celerity from the fluid bulk modulus and the pipe's
+  elastic wall, so each size/schedule carries the wave differently.
+- **Worker streaming** — the transient runs in the Web Worker and streams
+  pressure frames (transferred buffers) to the render thread; the 3D scene and
+  the pressure chart read them in their own loops, bypassing React (the Phase 3
+  compute/render split; a `SharedArrayBuffer` upgrade is a drop-in for
+  full-network fields).
+- **Live visualization** — the pipe deflects and recolors as the pressure wave
+  travels back and forth; a red ribbon traces the worst-case (peak-head)
+  envelope; a pressure-vs-time chart at the valve shows the surge against the
+  Joukowsky reference lines. Sub-atmospheric head raises a column-separation /
+  cavitation warning (modeled fully in Phase 4).
+
 ## Deployment
 
-Ships as a static SPA (all computation runs in the browser worker), so it
-hosts free on **Cloudflare Pages**: build command `npm run build`, output
-`dist`. `public/_headers` sets COOP/COEP so `SharedArrayBuffer` (Phase 3) is
-available in production; the app is fully self-contained to stay COEP-safe.
+Ships as a static SPA (all computation runs in the browser worker), so it hosts
+free on either target:
+
+- **Cloudflare Pages** (production target): build `npm run build`, output
+  `dist`; `public/_headers` sets COOP/COEP.
+- **Vercel** (used for live dev previews): `vercel.json` sets the same headers.
+
+COOP/COEP make the page cross-origin isolated so `SharedArrayBuffer` is
+available; the app is fully self-contained to stay COEP-safe.
 
 ## Verification
 
