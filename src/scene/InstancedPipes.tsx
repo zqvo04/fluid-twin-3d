@@ -1,0 +1,106 @@
+/**
+ * InstancedMesh pipe renderer — draws every pipe/valve link in a single draw
+ * call so the Global View holds 60 fps at the 500-pipe scale. Per-instance
+ * transforms orient each cylinder along its link; per-instance colors carry the
+ * steady-state head field. Clicks resolve through the instanceId back to the
+ * link id for selection.
+ */
+
+import { useLayoutEffect, useMemo, useRef } from 'react';
+import { InstancedMesh, Object3D, Vector3, Quaternion, Color } from 'three';
+import { ThreeEvent } from '@react-three/fiber';
+import { useAppStore } from '../ui/store';
+import { PipelineNetwork, nodeById, PipeLink } from '../domain/network';
+import { pipeGeometry } from '../domain/catalog/pipes';
+import { rampColor, normalize } from './colormap';
+
+const UP = new Vector3(0, 1, 0);
+
+function pipeLinks(net: PipelineNetwork): PipeLink[] {
+  return net.links.filter((l): l is PipeLink => l.kind === 'pipe');
+}
+
+export function InstancedPipes({ network }: { network: PipelineNetwork }) {
+  const meshRef = useRef<InstancedMesh>(null);
+  const result = useAppStore((s) => s.result);
+  const select = useAppStore((s) => s.select);
+
+  const links = useMemo(() => pipeLinks(network), [network]);
+
+  // Static transforms depend only on geometry, so compute once per network.
+  const transforms = useMemo(() => {
+    const dummy = new Object3D();
+    const out: Float32Array[] = [];
+    for (const link of links) {
+      const a = nodeById(network, link.from).position;
+      const b = nodeById(network, link.to).position;
+      const av = new Vector3(a.x, a.y, a.z);
+      const bv = new Vector3(b.x, b.y, b.z);
+      const dir = bv.clone().sub(av);
+      const len = dir.length();
+      dummy.position.copy(av).add(bv).multiplyScalar(0.5);
+      dummy.quaternion.copy(new Quaternion().setFromUnitVectors(UP, dir.clone().normalize()));
+      const radius = Math.max(0.05, pipeGeometry(link.nps, link.schedule).od * 1.4);
+      dummy.scale.set(radius, len, radius);
+      dummy.updateMatrix();
+      out.push(new Float32Array(dummy.matrix.elements));
+    }
+    return out;
+  }, [links, network]);
+
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const dummy = new Object3D();
+    for (let i = 0; i < transforms.length; i++) {
+      dummy.matrix.fromArray(transforms[i]);
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.count = transforms.length;
+  }, [transforms]);
+
+  // Recolor whenever the analysis result changes.
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const color = new Color();
+    const neutral = new Color('#8a8f98');
+
+    let min = 0;
+    let max = 1;
+    if (result) {
+      const heads = [...result.heads.values()];
+      min = Math.min(...heads);
+      max = Math.max(...heads);
+    }
+
+    let i = 0;
+    for (const link of links) {
+      if (result) {
+        const hA = result.heads.get(link.from) ?? min;
+        const hB = result.heads.get(link.to) ?? min;
+        color.copy(rampColor(normalize((hA + hB) / 2, min, max)));
+      } else {
+        color.copy(neutral);
+      }
+      mesh.setColorAt(i, color);
+      i++;
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [result, links]);
+
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (e.instanceId === undefined) return;
+    const link = links[e.instanceId];
+    if (link) select(link.id);
+  };
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, Math.max(1, links.length)]} onClick={onClick}>
+      <cylinderGeometry args={[1, 1, 1, 12]} />
+      <meshStandardMaterial metalness={0.3} roughness={0.6} />
+    </instancedMesh>
+  );
+}

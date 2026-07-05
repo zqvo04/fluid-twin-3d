@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { PipelineNetwork } from '../domain/network';
+import { cloneSubAssembly } from '../domain/assembly';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { SolveSteadyResponse } from '../worker/protocol';
 
@@ -31,9 +32,19 @@ interface AppState {
   select: (id: string | null) => void;
   setSolving: (v: boolean) => void;
   applyResult: (r: SolveSteadyResponse) => void;
+
+  setNetwork: (net: PipelineNetwork) => void;
+  updateValveOpening: (linkId: string, opening: number) => void;
+  updatePumpSpeed: (linkId: string, ratio: number) => void;
+  cloneFirstSkid: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+/** Editing the network invalidates any prior analysis result. */
+function withStaleResult(net: PipelineNetwork) {
+  return { network: net, result: null };
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
   network: pumpSkidNetwork(),
   viewMode: 'global',
   selectedId: null,
@@ -54,4 +65,34 @@ export const useAppStore = create<AppState>((set) => ({
         links: new Map(r.links),
       },
     }),
+
+  setNetwork: (net) => set({ ...withStaleResult(net), selectedId: null }),
+
+  updateValveOpening: (linkId, opening) => {
+    const net = get().network;
+    const links = net.links.map((l) =>
+      l.id === linkId && l.kind === 'valve' ? { ...l, opening } : l,
+    );
+    set(withStaleResult({ ...net, links }));
+  },
+
+  updatePumpSpeed: (linkId, ratio) => {
+    const net = get().network;
+    const links = net.links.map((l) =>
+      l.id === linkId && l.kind === 'pump' ? { ...l, speedRatio: ratio } : l,
+    );
+    set(withStaleResult({ ...net, links }));
+  },
+
+  cloneFirstSkid: () => {
+    const net = get().network;
+    if (net.subAssemblies.length === 0) return;
+    const n = net.subAssemblies.length + 1;
+    const { network } = cloneSubAssembly(net, net.subAssemblies[0].id, {
+      idSuffix: `__${n}`,
+      offset: { x: 0, y: 0, z: 14 * (n - 1) },
+      name: `Pump Skid #${n}`,
+    });
+    set({ ...withStaleResult(network), selectedId: null });
+  },
 }));

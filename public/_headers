@@ -1,0 +1,13 @@
+# Cloudflare Pages headers.
+#
+# COOP/COEP make the browser cross-origin isolated, which is required to expose
+# SharedArrayBuffer — the zero-copy channel the transient (MOC) solver uses in
+# Phase 3 to stream simulation fields from the Web Worker to the render thread.
+# Setting them now keeps dev (vite server headers) and prod consistent.
+#
+# Because COEP is require-corp, the app must stay fully self-contained: no
+# cross-origin scripts, fonts, or images. All assets are bundled locally.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff

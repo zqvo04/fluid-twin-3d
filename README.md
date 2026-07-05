@@ -14,8 +14,8 @@ the full physics/architecture design and the 7-phase roadmap.
 |---|---|---|
 | **0** | Scaffolding (Vite + React + R3F + Zustand + Web Worker + Vitest) | ✅ done |
 | **1** | Domain core + steady-state solver (GGA / Newton-Raphson) | ✅ done |
-| 2 | 3D assembly editor + Global View | next |
-| 3 | Transient MOC engine + SharedArrayBuffer pipeline | planned |
+| **2** | Modular assembly + InstancedMesh Global View + pump BEP warning | ✅ done |
+| 3 | Transient MOC engine + SharedArrayBuffer pipeline | next |
 | 4 | Vulnerability analysis + dynamic visualization | planned |
 | 5 | Detail View, scenarios, surge-protection design loop | planned |
 | 6 | Engineering reports + example plants | planned |
@@ -38,6 +38,28 @@ verified against textbook benchmarks:
 - **A minimal 3D Global View** — the demo pump-skid network rendered in R3F with
   the head field colored blue→red, plus a control panel that runs the analysis
   in the Web Worker and inspects component results.
+
+## What Phase 2 adds
+
+- **Modular assembly** — a SubAssembly (pump skid) can be cloned with fresh IDs
+  and a spatial offset, then wired into a larger end-to-end network.
+- **Project save/load** — the network serializes to versioned JSON with
+  validation on load.
+- **Connector checks** — flags NPS size changes at a node with no reducer.
+- **InstancedMesh Global View** — every pipe draws in a single call; a
+  procedural 480-pipe grid demonstrates the performance target (verified to
+  render and solve in-browser with no errors).
+- **Pump BEP warning (P4)** — classifies each pump's duty point against the
+  70–120% BEP window (low-flow / ok / overload).
+- **Live parameter editing** — valve opening and pump speed sliders in the
+  inspector; edits invalidate the stale result so a re-solve is one click away.
+
+## Deployment
+
+Ships as a static SPA (all computation runs in the browser worker), so it
+hosts free on **Cloudflare Pages**: build command `npm run build`, output
+`dist`. `public/_headers` sets COOP/COEP so `SharedArrayBuffer` (Phase 3) is
+available in production; the app is fully self-contained to stay COEP-safe.
 
 ## Verification
 
