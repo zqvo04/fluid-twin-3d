@@ -8,6 +8,7 @@
  */
 
 import { PipelineNetwork } from '../domain/network';
+import { WaterHammerConfig } from '../physics/transient';
 
 export interface SolveSteadyRequest {
   type: 'SOLVE_STEADY';
@@ -20,7 +21,33 @@ export interface PingRequest {
   requestId: number;
 }
 
-export type WorkerRequest = SolveSteadyRequest | PingRequest;
+/**
+ * Start a transient (water hammer) run. The worker steps the MOC solver on a
+ * fixed cadence and streams pressure frames back until it reaches the run
+ * duration or a STOP arrives. `stepsPerFrame` sets the slow-motion factor.
+ */
+export interface StartTransientRequest {
+  type: 'START_TRANSIENT';
+  requestId: number;
+  config: WaterHammerConfig;
+  /** Valve closure time [s]; the valve ramps tau 1->0 over this interval. */
+  closureTime: number;
+  /** MOC steps advanced per streamed frame (higher = faster playback). */
+  stepsPerFrame: number;
+  /** Number of wave periods (4L/a) to simulate before stopping. */
+  periods: number;
+}
+
+export interface StopTransientRequest {
+  type: 'STOP_TRANSIENT';
+  requestId: number;
+}
+
+export type WorkerRequest =
+  | SolveSteadyRequest
+  | PingRequest
+  | StartTransientRequest
+  | StopTransientRequest;
 
 export interface SolveSteadyResponse {
   type: 'SOLVE_STEADY_RESULT';
@@ -45,4 +72,24 @@ export interface ErrorResponse {
   message: string;
 }
 
-export type WorkerResponse = SolveSteadyResponse | PongResponse | ErrorResponse;
+/**
+ * One streamed transient frame. `head` is the head [m] at every node along the
+ * pipe; `maxEnvelope`/`minEnvelope` are the running per-node extremes (the
+ * worst-case pressure profile). Buffers are transferred, not copied.
+ */
+export interface TransientFrame {
+  type: 'TRANSIENT_FRAME';
+  requestId: number;
+  time: number;
+  tau: number;
+  head: Float32Array;
+  maxEnvelope: Float32Array;
+  minEnvelope: Float32Array;
+  valveHead: number;
+  reservoirHead: number;
+  joukowsky: number;
+  wavePeriod: number;
+  done: boolean;
+}
+
+export type WorkerResponse = SolveSteadyResponse | PongResponse | ErrorResponse | TransientFrame;

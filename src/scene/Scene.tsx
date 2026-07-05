@@ -1,18 +1,22 @@
 /**
- * R3F canvas: lighting, ground grid, camera controls, and the network view.
- * The Global/Detail view switch (Phase 5) will drive the camera through this
- * component; for now OrbitControls gives free inspection.
+ * R3F canvas: lighting, ground grid, camera controls, and the active view —
+ * either the steady-state network (Global View) or the transient Water Hammer
+ * Lab. No external environment map: COEP require-corp (public/_headers) forbids
+ * cross-origin asset fetches, so lighting is entirely local.
  */
 
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import { NetworkView } from './NetworkView';
+import { WaterHammerScene } from './WaterHammerScene';
+import { useAppStore } from '../ui/store';
 
-// No external environment map: COEP require-corp (see public/_headers) forbids
-// cross-origin asset fetches, so lighting is entirely local.
 export function Scene() {
+  const scene = useAppStore((s) => s.scene);
+  const target: [number, number, number] = scene === 'waterhammer' ? [17, 8, 0] : [10, 12, 0];
+
   return (
-    <Canvas camera={{ position: [18, 22, 34], fov: 50 }} shadows>
+    <Canvas camera={{ position: [18, 22, 40], fov: 50 }} shadows>
       <color attach="background" args={['#0e1116']} />
       <ambientLight intensity={0.4} />
       <hemisphereLight args={['#bcd4ff', '#20262e', 0.7]} />
@@ -27,8 +31,8 @@ export function Scene() {
         infiniteGrid
         fadeDistance={140}
       />
-      <NetworkView />
-      <OrbitControls makeDefault target={[10, 12, 0]} />
+      {scene === 'waterhammer' ? <WaterHammerScene /> : <NetworkView />}
+      <OrbitControls makeDefault target={target} />
     </Canvas>
   );
 }

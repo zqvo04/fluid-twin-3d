@@ -6,14 +6,16 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { useAppStore } from './store';
+import { useAppStore, AnalysisResult, ViewMode } from './store';
 import { useSimulationWorker } from './useSimulationWorker';
 import { paToBar, headToPressure } from '../domain/units';
 import { serializeProject, deserializeProject } from '../domain/serialize';
 import { checkConnectors } from '../domain/connectivity';
-import { analyzePumpDuty } from '../analysis/pumpDuty';
+import { analyzePumpDuty, PumpDuty } from '../analysis/pumpDuty';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { gridNetwork } from '../examples/largeNetwork';
+import { WaterHammerPanel } from './WaterHammerPanel';
+import { PipelineNetwork, ValidationIssue } from '../domain/network';
 
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: 'application/json' });
@@ -117,6 +119,8 @@ export function ControlPanel() {
   const network = useAppStore((s) => s.network);
   const setNetwork = useAppStore((s) => s.setNetwork);
   const cloneFirstSkid = useAppStore((s) => s.cloneFirstSkid);
+  const scene = useAppStore((s) => s.scene);
+  const setScene = useAppStore((s) => s.setScene);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const connectorWarnings = useMemo(() => checkConnectors(network), [network]);
@@ -144,9 +148,71 @@ export function ControlPanel() {
   return (
     <div className="panel">
       <h1>FluidTwin 3D</h1>
-      <p className="subtitle">Pipeline Digital Twin · Phase 2</p>
+      <p className="subtitle">Pipeline Digital Twin · Phase 3</p>
 
-      <div className="row">
+      <div className="row segmented">
+        <button className={scene === 'network' ? 'active' : ''} onClick={() => setScene('network')}>
+          Network (Steady)
+        </button>
+        <button className={scene === 'waterhammer' ? 'active' : ''} onClick={() => setScene('waterhammer')}>
+          Water Hammer
+        </button>
+      </div>
+
+      {scene === 'waterhammer' ? (
+        <WaterHammerPanel />
+      ) : (
+        <NetworkControls
+          solve={solve}
+          solving={solving}
+          result={result}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          cloneFirstSkid={cloneFirstSkid}
+          setNetwork={setNetwork}
+          network={network}
+          fileInput={fileInput}
+          onLoadFile={onLoadFile}
+          dutyWarnings={dutyWarnings}
+          connectorWarnings={connectorWarnings}
+        />
+      )}
+    </div>
+  );
+}
+
+interface NetworkControlsProps {
+  solve: () => void;
+  solving: boolean;
+  result: AnalysisResult | null;
+  viewMode: ViewMode;
+  setViewMode: (m: ViewMode) => void;
+  cloneFirstSkid: () => void;
+  setNetwork: (net: PipelineNetwork) => void;
+  network: PipelineNetwork;
+  fileInput: React.RefObject<HTMLInputElement>;
+  onLoadFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  dutyWarnings: PumpDuty[];
+  connectorWarnings: ValidationIssue[];
+}
+
+function NetworkControls({
+  solve,
+  solving,
+  result,
+  viewMode,
+  setViewMode,
+  cloneFirstSkid,
+  setNetwork,
+  network,
+  fileInput,
+  onLoadFile,
+  dutyWarnings,
+  connectorWarnings,
+}: NetworkControlsProps) {
+  return (
+    <>
+      <div className="row" style={{ marginTop: 10 }}>
         <button className="primary" onClick={solve} disabled={solving}>
           {solving ? 'Solving…' : 'Run Steady-State Analysis'}
         </button>
@@ -215,6 +281,6 @@ export function ControlPanel() {
         Head field colored blue→red. Reservoirs are cubes, junctions spheres, pumps blue, valves
         amber. Pipes render via a single InstancedMesh draw call.
       </p>
-    </div>
+    </>
   );
 }
