@@ -261,3 +261,25 @@ button.wide {
 .chart-legend .dot.surge { background: #ff5a4d; }
 .chart-legend .dot.ref { background: #5a6472; }
 .chart-legend .dot.drop { background: #3a9bdc; }
+
+.navbar {
+  padding-top: 10px;
+}
+
+.preset-row {
+  display: flex;
+  gap: 4px;
+}
+
+.preset-row button {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: #6a7280;
+  line-height: 1.5;
+}

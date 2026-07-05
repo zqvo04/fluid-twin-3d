@@ -95,6 +95,67 @@ describe('MOC water hammer solver', () => {
   });
 });
 
+describe('MOC column separation (DVCM cavitation)', () => {
+  // High velocity + low reservoir head guarantees the down-surge drives the
+  // head below the vapor level, forcing a vapor cavity to form.
+  function cavConfig(vaporHead: number | undefined): WaterHammerConfig {
+    const diameter = 0.3;
+    const area = (Math.PI / 4) * diameter * diameter;
+    return {
+      length: 500,
+      diameter,
+      area,
+      waveSpeed: 1200,
+      frictionFactor: 0.03,
+      reservoirHead: 60,
+      initialFlow: 1.0 * area, // V0 = 1 m/s -> Joukowsky ~122 m, downsurge below vapor
+      segments: 32,
+      vaporHead,
+    };
+  }
+
+  it('clamps the head at the vapor level instead of going unphysically negative', () => {
+    const withCav = new WaterHammerSim(cavConfig(-10));
+    const noCav = new WaterHammerSim(cavConfig(undefined));
+
+    let minWith = Infinity;
+    let minNo = Infinity;
+    for (let i = 0; i < 400; i++) {
+      withCav.step(0);
+      noCav.step(0);
+      for (let n = 0; n < withCav.nodes; n++) minWith = Math.min(minWith, withCav.H[n]);
+      for (let n = 0; n < noCav.nodes; n++) minNo = Math.min(minNo, noCav.H[n]);
+    }
+
+    // Without cavitation the head dives well below vapor; with it, it holds.
+    expect(minNo).toBeLessThan(-40);
+    expect(minWith).toBeGreaterThan(-10 - 1e-6);
+  });
+
+  it('forms a valve cavity, collapses it, and produces a rejoinder pressure spike', () => {
+    const sim = new WaterHammerSim(cavConfig(-10));
+    const valve = sim.nodes - 1;
+    let formed = false;
+    let collapsedAfterForming = false;
+    let peakAfterCollapse = -Infinity;
+
+    for (let i = 0; i < 400; i++) {
+      sim.step(0);
+      const cav = sim.cavityVolume[valve];
+      if (cav > 1e-6) formed = true;
+      if (formed && cav === 0 && !collapsedAfterForming) collapsedAfterForming = true;
+      if (collapsedAfterForming) peakAfterCollapse = Math.max(peakAfterCollapse, sim.H[valve]);
+    }
+
+    // A cavity forms at the closed valve and later collapses (columns rejoin).
+    expect(formed).toBe(true);
+    expect(collapsedAfterForming).toBe(true);
+    // The rejoining columns drive the valve head back above the reservoir head
+    // (the rejoinder shock — the mechanism behind column-separation damage).
+    expect(peakAfterCollapse).toBeGreaterThan(60);
+  });
+});
+
 describe('Korteweg wave speed', () => {
   it('is below the free-fluid sound speed and rises with wall stiffness', () => {
     const K = 2.18e9;

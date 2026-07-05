@@ -8,7 +8,8 @@
 import { useTransient } from '../transient/useTransient';
 import { useAppStore } from './store';
 import { buildWaterHammerConfig } from '../examples/waterHammerLab';
-import { NominalSize } from '../domain/catalog/pipes';
+import { NominalSize, pipeGeometry, A106B } from '../domain/catalog/pipes';
+import { analyzeHoopStress } from '../analysis/stress';
 import { paToBar, headToPressure } from '../domain/units';
 
 const SIZES: NominalSize[] = ['2"', '4"', '6"', '8"'];
@@ -123,10 +124,58 @@ export function WaterHammerPanel() {
             <span>Min head</span>
             <span className={summary.minHead < 0 ? 'warn' : ''}>{summary.minHead.toFixed(0)} m</span>
           </div>
-          {summary.minHead < 0 && (
-            <p className="warn">⚠ Head fell below zero — column separation / cavitation risk (modeled in Phase 4).</p>
-          )}
         </div>
+      )}
+
+      {summary && <Vulnerability summary={summary} />}
+    </div>
+  );
+}
+
+/** B31.3 hoop-stress judgment + cavitation summary from the transient run. */
+function Vulnerability({ summary }: { summary: NonNullable<ReturnType<typeof useTransient>['summary']> }) {
+  const labInputs = useAppStore((s) => s.labInputs);
+  const geo = pipeGeometry(labInputs.nps, labInputs.schedule);
+  const rho = 998;
+
+  // Gauge heads at the pipe (above the pipe elevation).
+  const steadyGauge = summary.reservoirHead - labInputs.pipeElevation;
+  const peakGauge = summary.peakHead - labInputs.pipeElevation;
+  const stress = analyzeHoopStress(steadyGauge, peakGauge, geo, A106B, rho);
+
+  const cavitated = summary.peakCavity > 1e-7 || summary.minHead < -8;
+
+  return (
+    <div className="section">
+      <h2>Vulnerability (B31.3)</h2>
+      <div className="predict">
+        <div className="kv">
+          <span>Sustained σ</span>
+          <span>{(stress.sustainedStress / 1e6).toFixed(0)} MPa · {(stress.sustainedUtil * 100).toFixed(0)}%</span>
+        </div>
+        <div className="kv">
+          <span>Occasional σ (surge)</span>
+          <span className={stress.occasionalUtil > 1 ? 'warn' : 'ok'}>
+            {(stress.occasionalStress / 1e6).toFixed(0)} MPa · {(stress.occasionalUtil * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="kv">
+          <span>Allowable S</span>
+          <span>{(A106B.allowable / 1e6).toFixed(0)} MPa (1.33S occ.)</span>
+        </div>
+      </div>
+
+      {stress.occasionalUtil > 1 && (
+        <p className="warn">⚠ Surge exceeds the 1.33S occasional allowable — pipe overstress / burst risk.</p>
+      )}
+      {cavitated && (
+        <p className="warn">
+          ⚠ Column separation: vapor cavity formed (peak {(summary.peakCavity * 1000).toFixed(1)} L). Rejoinder shock on
+          collapse.
+        </p>
+      )}
+      {stress.occasionalUtil <= 1 && !cavitated && (
+        <p className="ok">✓ Within B31.3 occasional allowable; no cavitation detected.</p>
       )}
     </div>
   );

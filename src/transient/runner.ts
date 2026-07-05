@@ -21,6 +21,7 @@ export interface TransientSummary {
   reservoirHead: number;
   peakHead: number;
   minHead: number;
+  peakCavity: number;
   joukowsky: number;
   wavePeriod: number;
   done: boolean;
@@ -80,6 +81,7 @@ class TransientRunner {
       reservoirHead: f.reservoirHead,
       peakHead: this.peakHead,
       minHead: this.minHead,
+      peakCavity: f.peakCavity,
       joukowsky: f.joukowsky,
       wavePeriod: f.wavePeriod,
       done: f.done,

@@ -16,8 +16,8 @@ the full physics/architecture design and the 7-phase roadmap.
 | **1** | Domain core + steady-state solver (GGA / Newton-Raphson) | ✅ done |
 | **2** | Modular assembly + InstancedMesh Global View + pump BEP warning | ✅ done |
 | **3** | Transient MOC water-hammer engine + streamed Water Hammer Lab | ✅ done |
-| 4 | Vulnerability analysis + dynamic visualization | next |
-| 5 | Detail View, scenarios, surge-protection design loop | planned |
+| **4** | Vulnerability analysis (cavitation, B31.3, NPSH, erosion) + navigation | ✅ done |
+| 5 | Detail View, scenarios, surge-protection design loop | next |
 | 6 | Engineering reports + example plants | planned |
 
 ## What Phase 1 delivers
@@ -76,6 +76,26 @@ solved live by the Method of Characteristics:
   envelope; a pressure-vs-time chart at the valve shows the surge against the
   Joukowsky reference lines. Sub-atmospheric head raises a column-separation /
   cavitation warning (modeled fully in Phase 4).
+
+## What Phase 4 adds
+
+Vulnerability analysis that turns the transient field into engineering
+verdicts, plus assembly-friendly navigation:
+
+- **Column separation / cavitation (DVCM)** — when the head would fall below the
+  vapor level, a Discrete Vapor Cavity Model pins it and tracks a cavity volume
+  from the upstream/downstream flow mismatch; on refill the cavity collapses and
+  the rejoining columns produce a pressure spike. Verified: cavity forms at a
+  closed valve, collapses, and the rejoinder drives the head *above* the initial
+  surge — the mechanism behind real column-separation damage. Rendered as vapor
+  bubbles at the affected sections.
+- **ASME B31.3 hoop stress** — sustained and occasional (1.33 S) utilization from
+  the steady and peak-surge pressure envelope, with a burst-risk warning.
+- **Pump NPSH margin** and **API RP 14E erosional velocity** checks on the steady
+  network, surfaced in the warnings panel.
+- **Navigation** — CameraControls (orbit + pan + dolly with damping), view
+  presets (Fit / Iso / Top / Front / Side), and WASD/QE + arrow-key movement, so
+  the model can be inspected and assembled, not just spun.
 
 ## Deployment
 
