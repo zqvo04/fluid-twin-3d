@@ -8,12 +8,13 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { InstancedMesh, Object3D, Vector3, Quaternion, Color } from 'three';
-import { ThreeEvent } from '@react-three/fiber';
+import { ThreeEvent, useFrame } from '@react-three/fiber';
 import { useAppStore } from '../ui/store';
 import { PipelineNetwork, nodeById, PipeLink } from '../domain/network';
 import { pipeGeometry } from '../domain/catalog/pipes';
-import { rampColor, normalize } from './colormap';
+import { rampColor, normalize, divergingColor } from './colormap';
 import { flyTo } from './cameraControl';
+import { netTransientRunner } from '../transient/netRunner';
 
 const UP = new Vector3(0, 1, 0);
 
@@ -91,6 +92,26 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [result, links]);
+
+  // Live recolor during a network water-hammer run: pipes flash with the
+  // travelling pressure wave (diverging ramp around the mid of the live range).
+  const liveColor = useMemo(() => new Color(), []);
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !netTransientRunner.active) return;
+    const { headById, minHead, maxHead } = netTransientRunner;
+    const ref = 0.5 * (minHead + maxHead);
+    const span = Math.max((maxHead - minHead) / 2, 1);
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i];
+      const hA = headById.get(link.from);
+      const hB = headById.get(link.to);
+      if (hA === undefined || hB === undefined) continue;
+      liveColor.copy(divergingColor(0.5 * (hA + hB), ref, span));
+      mesh.setColorAt(i, liveColor);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  });
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
