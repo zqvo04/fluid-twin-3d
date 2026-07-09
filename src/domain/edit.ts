@@ -125,6 +125,32 @@ export function updateLink(net: PipelineNetwork, id: string, patch: Partial<Netw
   };
 }
 
+/**
+ * Split a pipe at a point, inserting a junction and replacing the pipe with two
+ * pipes of the same spec (from→new, new→to). Enables Cities-Skylines-style
+ * branching: click a pipe to tap into it. Returns the new junction id.
+ */
+export function splitPipe(
+  net: PipelineNetwork,
+  linkId: string,
+  position: Vec3,
+): { network: PipelineNetwork; newNodeId: string } {
+  const link = net.links.find((l) => l.id === linkId);
+  if (!link || link.kind !== 'pipe') return { network: net, newNodeId: '' };
+
+  const node = makeNode('junction', position, net);
+  const withNode: PipelineNetwork = { ...net, nodes: [...net.nodes, node] };
+
+  const a: PipeLink = { ...link, id: genId('P', withNode), from: link.from, to: node.id, length: undefined };
+  const b: PipeLink = { ...link, id: genId('P', { ...withNode, links: [...withNode.links, a] }), from: node.id, to: link.to, length: undefined };
+
+  const network: PipelineNetwork = {
+    ...withNode,
+    links: [...withNode.links.filter((l) => l.id !== linkId), a, b],
+  };
+  return { network, newNodeId: node.id };
+}
+
 /** Replace a link with one of a different kind, preserving endpoints. */
 export function changeLinkKind(
   net: PipelineNetwork,

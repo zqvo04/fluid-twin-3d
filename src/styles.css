@@ -376,6 +376,43 @@ button.wide {
   color: #c8cdd4;
 }
 
+/* --- In-scene 3D component tags --- */
+.tag {
+  pointer-events: none;
+  transform: translateY(-50%);
+  background: rgba(14, 18, 24, 0.86);
+  border: 1px solid #333c48;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #dfe4ea;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.tag b {
+  display: block;
+  color: #ffd24d;
+  font-size: 11px;
+}
+
+.tag span {
+  color: #9fb0c0;
+  font-size: 10px;
+}
+
+.tag-hot {
+  border-color: #ff5a4d;
+  box-shadow: 0 0 10px rgba(255, 90, 77, 0.5);
+}
+
+.tag-hot span,
+.tag-hot b {
+  color: #ff8a7a;
+}
+
 button.active {
   background: #2b6cff;
   border-color: #2b6cff;

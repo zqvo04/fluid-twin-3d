@@ -10,7 +10,7 @@ import { NOMINAL_SIZES, NominalSize, Schedule } from '../domain/catalog/pipes';
 import { VALVE_TYPES, ValveType } from '../domain/catalog/valves';
 
 const TOOLS: { id: EditTool; label: string; hint: string }[] = [
-  { id: 'run', label: '✏ Pipe Run', hint: 'Click points on the ground to draw a connected run. Snaps to nearby nodes. Esc to finish.' },
+  { id: 'run', label: '✏ Pipe Run', hint: 'Click the ground to draw a connected run. Click a node to start/continue from it, or click a pipe to tap in (branch). Esc to finish.' },
   { id: 'place-reservoir', label: '+ Tank', hint: 'Click the ground to drop a tank/reservoir.' },
   { id: 'place-junction', label: '+ Junction', hint: 'Click the ground to drop a junction.' },
   { id: 'connect', label: 'Connect', hint: 'Click two nodes to join them with a component.' },
@@ -24,6 +24,7 @@ function EditableInspector() {
   const editNode = useAppStore((s) => s.editNode);
   const editLink = useAppStore((s) => s.editLink);
   const editLinkKind = useAppStore((s) => s.editLinkKind);
+  const nudgeNodeElevation = useAppStore((s) => s.nudgeNodeElevation);
   if (!selectedId) return <p className="muted">Nothing selected.</p>;
 
   const node = network.nodes.find((n) => n.id === selectedId);
@@ -54,6 +55,12 @@ function EditableInspector() {
             }
           />
         </label>
+        <div className="preset-row" style={{ marginTop: 2 }}>
+          <button onClick={() => nudgeNodeElevation(node.id, -5)}>▼5</button>
+          <button onClick={() => nudgeNodeElevation(node.id, -1)}>▼1</button>
+          <button onClick={() => nudgeNodeElevation(node.id, 1)}>▲1</button>
+          <button onClick={() => nudgeNodeElevation(node.id, 5)}>▲5</button>
+        </div>
         {node.type === 'reservoir' ? (
           <label className="ef">
             <span>Fixed head (m)</span>
@@ -133,6 +140,7 @@ export function BuildPanel() {
   const setEditTool = useAppStore((s) => s.setEditTool);
   const buildElevation = useAppStore((s) => s.buildElevation);
   const setBuildElevation = useAppStore((s) => s.setBuildElevation);
+  const nudgeBuildHeight = useAppStore((s) => s.nudgeBuildHeight);
   const linkDefaults = useAppStore((s) => s.linkDefaults);
   const setLinkDefaults = useAppStore((s) => s.setLinkDefaults);
   const newBlankNetwork = useAppStore((s) => s.newBlankNetwork);
@@ -154,15 +162,24 @@ export function BuildPanel() {
       <p className="hint">{connectFrom && editTool === 'connect' ? 'Now click the second node…' : hint}</p>
 
       {(editTool.startsWith('place') || editTool === 'run') && (
-        <label className="ef">
-          <span>Place elevation (m)</span>
-          <input
-            type="number"
-            value={buildElevation}
-            step={1}
-            onChange={(e) => setBuildElevation(Number(e.target.value))}
-          />
-        </label>
+        <>
+          <label className="ef">
+            <span>Build height (m)</span>
+            <input
+              type="number"
+              value={buildElevation}
+              step={1}
+              onChange={(e) => setBuildElevation(Number(e.target.value))}
+            />
+          </label>
+          <div className="preset-row" style={{ marginTop: 2 }}>
+            <button onClick={() => nudgeBuildHeight(-5)}>−5</button>
+            <button onClick={() => nudgeBuildHeight(-1)}>−1</button>
+            <button onClick={() => nudgeBuildHeight(1)}>+1</button>
+            <button onClick={() => nudgeBuildHeight(5)}>+5</button>
+          </div>
+          <p className="hint">R / F keys raise / lower the build height (Shift ×5) — place at any elevation to build risers. Move an existing node's height in the inspector below.</p>
+        </>
       )}
 
       {(editTool === 'connect' || editTool === 'run') && (

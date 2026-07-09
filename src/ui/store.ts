@@ -17,6 +17,7 @@ import {
   updateNode as updateNodeOp,
   updateLink as updateLinkOp,
   changeLinkKind as changeLinkKindOp,
+  splitPipe as splitPipeOp,
   LinkDefaults,
 } from '../domain/edit';
 import { NominalSize, Schedule } from '../domain/catalog/pipes';
@@ -87,8 +88,12 @@ interface AppState {
   placeNodeAt: (position: Vec3) => void;
   runClickAt: (position: Vec3) => void;
   cancelBuild: () => void;
+  /** Raise/lower the build work-plane by delta [m] (snaps to nearby heights). */
+  nudgeBuildHeight: (delta: number) => void;
+  /** Move a node vertically by delta [m] (turns its pipes into risers). */
+  nudgeNodeElevation: (id: string, delta: number) => void;
   handleNodeClick: (nodeId: string) => void;
-  handleLinkClick: (linkId: string) => void;
+  handleLinkClick: (linkId: string, point?: Vec3) => void;
   editNode: (id: string, patch: Partial<NetworkNode>) => void;
   editLink: (id: string, patch: Partial<NetworkLink>) => void;
   editLinkKind: (id: string, kind: 'pipe' | 'valve' | 'pump') => void;
@@ -180,6 +185,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLinkDefaults: (patch) => set({ linkDefaults: { ...get().linkDefaults, ...patch } }),
   cancelBuild: () => set({ connectFrom: null, runFrom: null }),
 
+  nudgeBuildHeight: (delta) => {
+    const { network, buildElevation } = get();
+    // Snap the work-plane to a nearby existing node height for easy alignment.
+    let y = buildElevation + delta;
+    for (const n of network.nodes) {
+      if (Math.abs(n.position.y - y) < 0.8) {
+        y = n.position.y;
+        break;
+      }
+    }
+    set({ buildElevation: Math.round(y * 10) / 10 });
+  },
+
+  nudgeNodeElevation: (id, delta) => {
+    const { network } = get();
+    const node = network.nodes.find((n) => n.id === id);
+    if (!node) return;
+    const newY = node.position.y + delta;
+    const patch: Partial<NetworkNode> = { position: { ...node.position, y: newY } };
+    // A tank sitting at its free surface rises with its elevation.
+    if (node.type === 'reservoir' && (node.fixedHead ?? node.position.y) === node.position.y) {
+      patch.fixedHead = newY;
+    }
+    set(withStaleResult(updateNodeOp(network, id, patch)));
+  },
+
   placeNodeAt: (position) => {
     const { editTool, network } = get();
     const type: NodeType = editTool === 'place-reservoir' ? 'reservoir' : 'junction';
@@ -247,11 +278,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedId: nodeId });
   },
 
-  handleLinkClick: (linkId) => {
+  handleLinkClick: (linkId, point) => {
     const { editMode, editTool, network } = get();
     if (editMode && editTool === 'delete') {
       set({ ...withStaleResult(removeElement(network, linkId)), selectedId: null });
       return;
+    }
+    // Cities-Skylines tap-in: in Run mode, clicking a pipe splits it at the
+    // click point and continues the run from the new junction.
+    if (editMode && editTool === 'run' && point) {
+      const link = network.links.find((l) => l.id === linkId);
+      if (link && link.kind === 'pipe') {
+        const { network: net2, newNodeId } = splitPipeOp(network, linkId, point);
+        const { runFrom, linkDefaults } = get();
+        let net3 = net2;
+        if (runFrom && newNodeId && runFrom !== newNodeId) {
+          net3 = addLinkOp(net2, makeLink(runFrom, newNodeId, linkDefaults, net2));
+        }
+        set({ ...withStaleResult(net3), runFrom: newNodeId, selectedId: newNodeId });
+        return;
+      }
     }
     set({ selectedId: linkId });
   },

@@ -9,6 +9,7 @@ import {
   updateNode,
   updateLink,
   changeLinkKind,
+  splitPipe,
   LinkDefaults,
 } from './edit';
 import { emptyNetwork, validateNetwork } from './network';
@@ -86,6 +87,33 @@ describe('interactive network editing', () => {
     net = addLink(net, pipe);
     net = updateLink(net, pipe.id, { nps: '8"' });
     expect((net.links[0] as { nps: string }).nps).toBe('8"');
+  });
+
+  it('splits a pipe into two, inserting a junction (Cities-Skylines tap-in)', () => {
+    let net = emptyNetwork();
+    const a = makeNode('reservoir', { x: 0, y: 20, z: 0 }, net);
+    const b = makeNode('reservoir', { x: 20, y: 0, z: 0 }, net);
+    net = addNode(addNode(net, a), b);
+    const pipe = makeLink(a.id, b.id, defaults, net);
+    net = addLink(net, pipe);
+
+    const { network, newNodeId } = splitPipe(net, pipe.id, { x: 10, y: 10, z: 0 });
+    expect(newNodeId).not.toBe('');
+    // Original pipe replaced by two pipes; a new junction added.
+    expect(network.links).toHaveLength(2);
+    expect(network.links.find((l) => l.id === pipe.id)).toBeUndefined();
+    expect(network.nodes).toHaveLength(3);
+    const mid = network.nodes.find((n) => n.id === newNodeId)!;
+    expect(mid.type).toBe('junction');
+    // The two new pipes chain a -> mid -> b.
+    const froms = network.links.map((l) => l.from);
+    const tos = network.links.map((l) => l.to);
+    expect(froms).toContain(a.id);
+    expect(tos).toContain(b.id);
+    expect(froms).toContain(newNodeId);
+    expect(tos).toContain(newNodeId);
+    // Still solvable after the split.
+    expect(solveSteadyState(network).converged).toBe(true);
   });
 
   it('changes a link kind while preserving endpoints and id', () => {

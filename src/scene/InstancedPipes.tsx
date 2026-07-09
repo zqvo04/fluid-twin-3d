@@ -97,7 +97,7 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
     if (e.instanceId === undefined) return;
     const link = links[e.instanceId];
     if (!link) return;
-    handleLinkClick(link.id);
+    handleLinkClick(link.id, { x: e.point.x, y: e.point.y, z: e.point.z });
     if (!editMode) {
       const a = nodeById(network, link.from).position;
       const b = nodeById(network, link.to).position;

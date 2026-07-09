@@ -172,6 +172,11 @@ export function ControlPanel() {
   );
   const vulnWarnings: string[] = [];
   if (vuln) {
+    for (const v of vuln.valveCavitation) {
+      if (v.cavitating) {
+        vulnWarnings.push(`${v.linkId}: valve cavitating (σ ${v.sigma.toFixed(1)} < ${v.sigmaIncipient}) at ΔP ${v.headLoss.toFixed(1)} m — throttle less or resize.`);
+      }
+    }
     for (const e of vuln.erosion) {
       vulnWarnings.push(`${e.linkId}: velocity ${e.velocity.toFixed(1)} m/s exceeds erosional limit ${e.limit.toFixed(1)} m/s (API RP 14E).`);
     }
