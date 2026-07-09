@@ -20,7 +20,7 @@ the full physics/architecture design and the 7-phase roadmap.
 | **5** | Surge-protection design loop, flow viz, fly-to, static-pipe highlight | ✅ done |
 | **B** | Interactive 3D pipeline builder (place / connect / edit / delete) | ✅ done |
 | **T** | Network-wide transient (MOC) on any built network, live | ✅ done |
-| 6 | Engineering reports + example plants | next |
+| **6** | Engineering reports + example plants + exports | ✅ done |
 
 ## What Phase 1 delivers
 
@@ -183,6 +183,18 @@ steady state when nothing changes, and conserves mass at a tee. Massless
 internal nodes get a small compliance and heads are clamped at the vapor level
 (a column-separation limiter) for stability. Pumps are modeled as a rigid
 running head-gain in the transient (4-quadrant pump-trip is future work).
+
+## Engineering report & example plants (Phase 6)
+
+`analysis/report.ts` aggregates the steady result and every vulnerability
+analyzer (B31.3 hoop stress, pump BEP, NPSH, API RP 14E erosion, ISA valve
+cavitation) into a single report with a **PASS / ATTENTION REQUIRED** verdict
+and the governing code clause on each finding. It renders to a printable **HTML**
+document, a **CSV** results table, and Markdown, all downloadable from the panel.
+
+Four **example plants** ship for one-click loading: the pump skid, a gravity
+main (a water-hammer showcase), a cooling-water loop, and the 480-pipe stress
+grid — each validated to converge.
 
 ## Deployment
 
