@@ -181,8 +181,18 @@ surge and minimum head.
 Verified: reproduces the `a·V0/g` Joukowsky surge on a branched line, holds the
 steady state when nothing changes, and conserves mass at a tee. Massless
 internal nodes get a small compliance and heads are clamped at the vapor level
-(a column-separation limiter) for stability. Pumps are modeled as a rigid
-running head-gain in the transient (4-quadrant pump-trip is future work).
+(a column-separation limiter) for stability.
+
+**Pump trip (power failure).** A running pump is a stiff head-gain link; on trip
+the motor torque vanishes and the rotor spins down under fluid torque —
+`I·dω/dt = −ρgQH/(ηω)` — with the pump head following the affinity-scaled curve
+at the falling speed and a discharge check valve (no reverse flow). So a heavier
+rotor sustains flow longer and softens the surge, and the check-valve slam on
+flow reversal drives the classic power-failure surge; live pump speed is
+reported. Verified: the rotor spins to rest, more inertia delays the flow decay,
+and an un-tripped pump holds steady flow. (This captures inertia, gravity, and
+speed-dependent head; full empirical Suter 4-quadrant turbine-zone data is a
+further refinement.)
 
 ## Engineering report & example plants (Phase 6)
 

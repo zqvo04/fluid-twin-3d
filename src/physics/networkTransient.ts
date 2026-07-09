@@ -61,10 +61,21 @@ interface TPump {
   id: string;
   from: number;
   to: number;
-  /** Fixed head gain [m] (rigid running pump; 4-quadrant trip is future work). */
+  /** Fixed head gain [m] while the motor runs (stiff-link approximation). */
   gain: number;
   /** Stiff conductance enforcing the head gain [m^3/s per m]. */
   C: number;
+  // Rated curve H = a0 - a1 Q - a2 Q^2, used once the pump is tripped.
+  a0: number;
+  a1: number;
+  a2: number;
+  /** Speed ratio alpha = N / N_rated (1 while running; decays after a trip). */
+  alpha: number;
+  tripped: boolean;
+  inertia: number; // rotor polar moment [kg m^2]
+  omegaR: number; // rated angular speed [rad/s]
+  etaR: number; // rated hydraulic efficiency
+  qLast: number; // last solved pump flow [m^3/s] (for the rotor update)
 }
 
 export interface NetworkTransientResult {
@@ -189,7 +200,23 @@ export class NetworkTransientSim {
         const from = nodeIndex.get(l.from)!;
         const to = nodeIndex.get(l.to)!;
         const gain = (steady.heads.get(l.to) ?? 0) - (steady.heads.get(l.from) ?? 0);
-        return { id: l.id, from, to, gain, C: 200 * refCond };
+        const s = l.spec;
+        return {
+          id: l.id,
+          from,
+          to,
+          gain,
+          C: 200 * refCond,
+          a0: s.a0,
+          a1: s.a1,
+          a2: s.a2,
+          alpha: 1,
+          tripped: false,
+          inertia: s.inertia,
+          omegaR: (s.ratedRpm * 2 * Math.PI) / 60,
+          etaR: 0.75,
+          qLast: steady.links.get(l.id)?.flow ?? 0,
+        };
       });
 
     // Nodes with no attached pipe (e.g. between a valve and a pump) get a small
@@ -205,6 +232,24 @@ export class NetworkTransientSim {
   setValveOpening(valveId: string, opening: number): void {
     const v = this.valves.find((x) => x.id === valveId);
     if (v) v.opening = Math.max(0, Math.min(1, opening));
+  }
+
+  /** Trip a pump (power failure): the motor torque vanishes and the rotor
+   *  spins down under fluid torque from here on. */
+  tripPump(pumpId: string): void {
+    const p = this.pumps.find((x) => x.id === pumpId);
+    if (p) p.tripped = true;
+  }
+
+  /** Pump speed ratio N/N_rated (1 = rated, 0 = stopped). */
+  pumpSpeed(pumpId: string): number {
+    const p = this.pumps.find((x) => x.id === pumpId);
+    return p ? p.alpha : 0;
+  }
+
+  /** Ids of pumps (for the UI to offer a trip target). */
+  get pumpList(): string[] {
+    return this.pumps.map((p) => p.id);
   }
 
   /** Head [m] at a node by id. */
@@ -284,6 +329,19 @@ export class NetworkTransientSim {
       p.Q = Qn;
     }
 
+    // 4) Rotor dynamics for tripped pumps: I dω/dt = -T_fluid. With no motor
+    // torque, the fluid torque T = ρ g Q H / (η ω) decelerates the rotor, so a
+    // heavier rotor (more inertia) sustains flow longer and softens the surge.
+    for (const p of this.pumps) {
+      if (!p.tripped) continue;
+      const q = Math.max(0, p.qLast);
+      const hPump = Math.max(0, this.nodeHead[p.to] - this.nodeHead[p.from]);
+      const omega = Math.max(p.alpha * p.omegaR, 0.02 * p.omegaR);
+      const torque = (this.fluid.rho * G * q * hPump) / (p.etaR * omega);
+      const dAlpha = -(torque * this.dt) / (p.inertia * p.omegaR);
+      p.alpha = Math.max(0, p.alpha + dAlpha);
+    }
+
     this.time += this.dt;
   }
 
@@ -333,14 +391,37 @@ export class NetworkTransientSim {
         if (ut >= 0) { F[ut] += q; J[ut][ut] += -dq; if (uf >= 0) J[ut][uf] += dq; }
       }
 
-      // Pump contributions (rigid running pump): a stiff linear head-gain link
-      // Q = C * (H_from + gain - H_to). Stable; 4-quadrant trip is future work.
+      // Pump contributions. A running pump is a stiff head-gain link (stable).
+      // A tripped pump uses its affinity-scaled curve at the current speed with
+      // a discharge check valve (no reverse flow) — the spin-down / check-valve
+      // slam that drives power-failure water hammer.
       for (const p of this.pumps) {
-        const q = p.C * (H[p.from] + p.gain - H[p.to]);
         const uf = this.unknownIndex[p.from];
         const ut = this.unknownIndex[p.to];
-        if (uf >= 0) { F[uf] -= q; J[uf][uf] += -p.C; if (ut >= 0) J[uf][ut] += p.C; }
-        if (ut >= 0) { F[ut] += q; J[ut][ut] += -p.C; if (uf >= 0) J[ut][uf] += p.C; }
+        if (!p.tripped) {
+          const q = p.C * (H[p.from] + p.gain - H[p.to]);
+          if (uf >= 0) { F[uf] -= q; J[uf][uf] += -p.C; if (ut >= 0) J[uf][ut] += p.C; }
+          if (ut >= 0) { F[ut] += q; J[ut][ut] += -p.C; if (uf >= 0) J[ut][uf] += p.C; }
+          p.qLast = q;
+          continue;
+        }
+        // Tripped: solve H_to - H_from = a0 α² - a1 α Q - a2 Q²  for Q >= 0.
+        const a = p.alpha;
+        const dHba = H[p.to] - H[p.from];
+        const disc = (p.a1 * a) ** 2 - 4 * p.a2 * (dHba - p.a0 * a * a);
+        let q = 0;
+        let dq = 0; // dQ/d(dHba)
+        if (disc > 0 && p.a2 > 1e-9) {
+          const qs = (-p.a1 * a + Math.sqrt(disc)) / (2 * p.a2);
+          if (qs > 0) {
+            q = qs;
+            const denom = 2 * p.a2 * qs + p.a1 * a;
+            dq = Math.abs(denom) > 1e-9 ? -1 / denom : 0;
+          }
+        }
+        p.qLast = q;
+        if (uf >= 0) { F[uf] -= q; J[uf][uf] += -dq * -1; if (ut >= 0) J[uf][ut] += -dq * 1; }
+        if (ut >= 0) { F[ut] += q; J[ut][ut] += dq * 1; if (uf >= 0) J[ut][uf] += dq * -1; }
       }
 
       // Nodal compliance (regularizes massless internal nodes): a small storage

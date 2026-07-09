@@ -14,6 +14,7 @@ export interface NetTransientSummary {
   peakSurge: number;
   minHead: number;
   maxHead: number;
+  pumpSpeed: number;
   done: boolean;
 }
 
@@ -62,6 +63,7 @@ class NetworkTransientRunner {
         peakSurge: msg.peakSurge,
         minHead: msg.minHead,
         maxHead: msg.maxHead,
+        pumpSpeed: msg.pumpSpeed,
         done: msg.done,
       };
       for (const l of this.listeners) l(summary);
@@ -76,6 +78,7 @@ class NetworkTransientRunner {
   start(
     network: PipelineNetwork,
     valveId: string | null,
+    pumpTripId: string | null,
     closureTime: number,
     stepsPerFrame: number,
     seconds: number,
@@ -92,6 +95,7 @@ class NetworkTransientRunner {
       requestId: this.requestId++,
       network,
       valveId,
+      pumpTripId,
       closureTime,
       stepsPerFrame,
       seconds,

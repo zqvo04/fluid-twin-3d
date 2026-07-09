@@ -87,6 +87,7 @@ function runNetTransient(req: StartNetTransientRequest) {
   const initHeads = Float64Array.from(sim.nodeHead);
   const valve = req.valveId ? req.network.links.find((l) => l.id === req.valveId) : null;
   const opening0 = valve && valve.kind === 'valve' ? valve.opening : 1;
+  if (req.pumpTripId) sim.tripPump(req.pumpTripId);
   const endTime = req.seconds;
   const frameMs = 25;
   let peakSurge = 0;
@@ -122,6 +123,7 @@ function runNetTransient(req: StartNetTransientRequest) {
       minHead,
       maxHead,
       peakSurge,
+      pumpSpeed: req.pumpTripId ? sim.pumpSpeed(req.pumpTripId) : 1,
       done,
     };
     ctx.postMessage(frame, [heads.buffer, flows.buffer]);
