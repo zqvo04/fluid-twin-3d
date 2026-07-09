@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { G } from '../domain/units';
 import { waterProperties } from '../domain/fluid';
 import { pipeGeometry, A106B } from '../domain/catalog/pipes';
+import { PUMP_50M } from '../domain/catalog/pumps';
 import { waveSpeed } from './waveSpeed';
 import { PipelineNetwork } from '../domain/network';
 import { NetworkTransientSim } from './networkTransient';
@@ -68,6 +69,61 @@ describe('network MOC — Joukowsky surge on a branched line', () => {
     // Within ~15% of Joukowsky (finite dt + friction reduce it slightly).
     expect(surge).toBeGreaterThan(0.75 * joukowsky);
     expect(surge).toBeLessThan(1.1 * joukowsky);
+  });
+});
+
+describe('network MOC — pump trip (power failure)', () => {
+  function pumpLine(inertia: number): PipelineNetwork {
+    const spec = { ...PUMP_50M, inertia };
+    return {
+      temperatureC: 20,
+      subAssemblies: [],
+      nodes: [
+        { id: 'S', type: 'reservoir', position: { x: 0, y: 0, z: 0 }, fixedHead: 2 },
+        { id: 'J', type: 'junction', position: { x: 5, y: 0, z: 0 }, demand: 0 },
+        { id: 'T', type: 'reservoir', position: { x: 200, y: 30, z: 0 }, fixedHead: 30 },
+      ],
+      links: [
+        { id: 'PMP', kind: 'pump', from: 'S', to: 'J', spec, speedRatio: 1 },
+        { id: 'P', kind: 'pipe', from: 'J', to: 'T', nps: '4"', schedule: '40', length: 200 },
+      ],
+    };
+  }
+
+  function flowHalfTime(inertia: number): { t50: number; alphaEnd: number; q0: number } {
+    const sim = new NetworkTransientSim(pumpLine(inertia), 8, 6 / 1400);
+    const q0 = sim.pipeFlow('P');
+    sim.tripPump('PMP');
+    let t50 = Infinity;
+    for (let i = 0; i < 1500; i++) {
+      sim.step();
+      if (t50 === Infinity && sim.pipeFlow('P') < 0.5 * q0) t50 = sim.time;
+    }
+    return { t50, alphaEnd: sim.pumpSpeed('PMP'), q0 };
+  }
+
+  it('spins the rotor down to rest after a trip', () => {
+    const sim = new NetworkTransientSim(pumpLine(0.9), 8, 6 / 1400);
+    expect(sim.pumpSpeed('PMP')).toBeCloseTo(1, 6);
+    sim.tripPump('PMP');
+    for (let i = 0; i < 1500; i++) sim.step();
+    expect(sim.pumpSpeed('PMP')).toBeLessThan(0.1); // spun down
+  });
+
+  it('a heavier rotor sustains the flow longer (inertia matters)', () => {
+    const light = flowHalfTime(0.3);
+    const heavy = flowHalfTime(3.0);
+    expect(light.q0).toBeGreaterThan(0);
+    // Both eventually decay, but more inertia delays the flow decay.
+    expect(heavy.t50).toBeGreaterThan(light.t50 * 1.5);
+  });
+
+  it('leaves flow untouched while the pump keeps running', () => {
+    const sim = new NetworkTransientSim(pumpLine(0.9), 8, 6 / 1400);
+    const q0 = sim.pipeFlow('P');
+    for (let i = 0; i < 300; i++) sim.step(); // no trip
+    expect(sim.pipeFlow('P')).toBeCloseTo(q0, 2);
+    expect(sim.pumpSpeed('PMP')).toBeCloseTo(1, 6);
   });
 });
 

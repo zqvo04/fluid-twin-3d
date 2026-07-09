@@ -48,8 +48,10 @@ export interface StartNetTransientRequest {
   type: 'START_NET_TRANSIENT';
   requestId: number;
   network: PipelineNetwork;
-  /** Valve link id to close (the surge trigger), or null to just perturb. */
+  /** Valve link id to close (the surge trigger), or null. */
   valveId: string | null;
+  /** Pump link id to trip (power failure), or null. */
+  pumpTripId: string | null;
   closureTime: number;
   stepsPerFrame: number;
   seconds: number;
@@ -122,6 +124,8 @@ export interface NetTransientFrame {
   minHead: number;
   maxHead: number;
   peakSurge: number;
+  /** Speed ratio of the tripped pump (1 = rated, 0 = stopped; 1 if none). */
+  pumpSpeed: number;
   done: boolean;
 }
 

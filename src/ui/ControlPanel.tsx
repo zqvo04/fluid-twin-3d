@@ -15,10 +15,11 @@ import { analyzePumpDuty, PumpDuty } from '../analysis/pumpDuty';
 import { analyzeNetworkVulnerability } from '../analysis/networkVulnerability';
 import { waterProperties } from '../domain/fluid';
 import { pumpSkidNetwork } from '../examples/demoNetworks';
-import { gridNetwork } from '../examples/largeNetwork';
 import { WaterHammerPanel } from './WaterHammerPanel';
 import { BuildPanel } from './BuildPanel';
 import { NetworkTransientPanel } from './NetworkTransientPanel';
+import { ReportPanel } from './ReportPanel';
+import { EXAMPLE_PLANTS } from '../examples/examplePlants';
 import { PipelineNetwork, ValidationIssue } from '../domain/network';
 import { applyPreset, flyTo, ViewPreset } from '../scene/cameraControl';
 
@@ -333,13 +334,28 @@ function NetworkControls({
 
       <div className="section">
         <h2>Assemble</h2>
+        <label className="ef">
+          <span>Example plant</span>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const p = EXAMPLE_PLANTS.find((x) => x.id === e.target.value);
+              if (p) setNetwork(p.build());
+              e.target.value = '';
+            }}
+          >
+            <option value="" disabled>Load…</option>
+            {EXAMPLE_PLANTS.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
         <div className="grid2">
           <button onClick={cloneFirstSkid} disabled={network.subAssemblies.length === 0}>Clone Skid</button>
-          <button onClick={() => setNetwork(gridNetwork(16, 16))}>Load 480-Pipe Grid</button>
           <button onClick={() => setNetwork(pumpSkidNetwork())}>Reset Demo</button>
           <button onClick={() => download('pipeline-project.json', serializeProject(network))}>Save JSON</button>
+          <button onClick={() => fileInput.current?.click()}>Load JSON…</button>
         </div>
-        <button className="wide" onClick={() => fileInput.current?.click()}>Load JSON…</button>
         <input ref={fileInput} type="file" accept="application/json" hidden onChange={onLoadFile} />
       </div>
 
@@ -352,6 +368,8 @@ function NetworkControls({
       </div>
 
       <NetworkTransientPanel />
+
+      <ReportPanel />
 
       {(dutyWarnings.length > 0 || connectorWarnings.length > 0 || vulnWarnings.length > 0) && (
         <div className="section">
