@@ -88,6 +88,10 @@ interface AppState {
   placeNodeAt: (position: Vec3) => void;
   runClickAt: (position: Vec3) => void;
   cancelBuild: () => void;
+  /** Raise/lower the build work-plane by delta [m] (snaps to nearby heights). */
+  nudgeBuildHeight: (delta: number) => void;
+  /** Move a node vertically by delta [m] (turns its pipes into risers). */
+  nudgeNodeElevation: (id: string, delta: number) => void;
   handleNodeClick: (nodeId: string) => void;
   handleLinkClick: (linkId: string, point?: Vec3) => void;
   editNode: (id: string, patch: Partial<NetworkNode>) => void;
@@ -180,6 +184,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBuildElevation: (y) => set({ buildElevation: y }),
   setLinkDefaults: (patch) => set({ linkDefaults: { ...get().linkDefaults, ...patch } }),
   cancelBuild: () => set({ connectFrom: null, runFrom: null }),
+
+  nudgeBuildHeight: (delta) => {
+    const { network, buildElevation } = get();
+    // Snap the work-plane to a nearby existing node height for easy alignment.
+    let y = buildElevation + delta;
+    for (const n of network.nodes) {
+      if (Math.abs(n.position.y - y) < 0.8) {
+        y = n.position.y;
+        break;
+      }
+    }
+    set({ buildElevation: Math.round(y * 10) / 10 });
+  },
+
+  nudgeNodeElevation: (id, delta) => {
+    const { network } = get();
+    const node = network.nodes.find((n) => n.id === id);
+    if (!node) return;
+    const newY = node.position.y + delta;
+    const patch: Partial<NetworkNode> = { position: { ...node.position, y: newY } };
+    // A tank sitting at its free surface rises with its elevation.
+    if (node.type === 'reservoir' && (node.fixedHead ?? node.position.y) === node.position.y) {
+      patch.fixedHead = newY;
+    }
+    set(withStaleResult(updateNodeOp(network, id, patch)));
+  },
 
   placeNodeAt: (position) => {
     const { editTool, network } = get();

@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Vector3, Quaternion, Mesh, Color } from 'three';
 import { ThreeEvent } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
+import { Html, Grid } from '@react-three/drei';
 import { useAppStore } from '../ui/store';
 import { PipelineNetwork, NetworkNode, NetworkLink, nodeById } from '../domain/network';
 import { pipeGeometry } from '../domain/catalog/pipes';
@@ -110,14 +110,21 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
   );
 }
 
-function NodeMesh({ node }: { node: NetworkNode }) {
+function NodeMesh({ node, showLabels }: { node: NetworkNode; showLabels: boolean }) {
   const handleNodeClick = useAppStore((s) => s.handleNodeClick);
   const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === node.id);
   const isAnchor = useAppStore((s) => s.connectFrom === node.id || s.runFrom === node.id);
+  const result = useAppStore((s) => s.result);
   const [hovered, setHovered] = useState(false);
   const isReservoir = node.type === 'reservoir';
   const highlight = selected || isAnchor || hovered;
+
+  // Gauge pressure at this node from the solved head (head − elevation).
+  const head = result?.heads.get(node.id);
+  const gaugeBar = head !== undefined ? ((head - node.position.y) * 998 * 9.80665) / 1e5 : null;
+  const showLabel = showLabels || selected || hovered;
+
   return (
     <mesh
       position={[node.position.x, node.position.y, node.position.z]}
@@ -143,6 +150,14 @@ function NodeMesh({ node }: { node: NetworkNode }) {
         emissive={highlight ? '#ffffff' : '#000000'}
         emissiveIntensity={highlight ? 0.55 : 0}
       />
+      {showLabel && (
+        <Html position={[0, 1.1, 0]} center distanceFactor={26} zIndexRange={[6, 0]}>
+          <div className={`tag ${selected ? 'tag-sel' : ''}`}>
+            <b>z {node.position.y.toFixed(1)} m</b>
+            {gaugeBar !== null && <span>{gaugeBar.toFixed(1)} bar</span>}
+          </div>
+        </Html>
+      )}
     </mesh>
   );
 }
@@ -195,6 +210,17 @@ function EditPlane() {
 
   return (
     <group>
+      {/* Visible work-plane grid at the current build height (R/F to move). */}
+      <Grid
+        position={[10, buildElevation + 0.01, 0]}
+        args={[120, 120]}
+        cellSize={1}
+        cellColor="#39597a"
+        sectionSize={5}
+        sectionColor="#5f8fbe"
+        fadeDistance={70}
+        fadeStrength={1.5}
+      />
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[10, buildElevation, 0]}
@@ -251,19 +277,33 @@ function SelectionHighlight({ net }: { net: PipelineNetwork }) {
 export function NetworkView() {
   const network = useAppStore((s) => s.network);
   const flowViz = useAppStore((s) => s.flowViz);
+  const editMode = useAppStore((s) => s.editMode);
   const components = useMemo(
     () => network.links.filter((l) => l.kind === 'valve' || l.kind === 'pump'),
     [network],
   );
 
-  // Esc ends an in-progress Pipe Run / connection.
+  // Build keyboard: Esc ends a run; R/F raise/lower elevation (Shift = ×5) —
+  // moving the selected node or, if none, the build work-plane.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') useAppStore.getState().cancelBuild();
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const s = useAppStore.getState();
+      if (e.key === 'Escape') s.cancelBuild();
+      if (!s.editMode) return;
+      const step = e.shiftKey ? 5 : 1;
+      // R/F always move the build work-plane (place-at-height). Node vertical
+      // moves are done from the inspector to keep the two unambiguous.
+      if (e.code === 'KeyR') { s.nudgeBuildHeight(step); e.preventDefault(); }
+      if (e.code === 'KeyF') { s.nudgeBuildHeight(-step); e.preventDefault(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Show node elevation/pressure labels while building (small user networks).
+  const showLabels = editMode && network.nodes.length <= 60;
 
   return (
     <group>
@@ -272,7 +312,7 @@ export function NetworkView() {
         <ComponentLink key={l.id} net={network} link={l} />
       ))}
       {network.nodes.map((n) => (
-        <NodeMesh key={n.id} node={n} />
+        <NodeMesh key={n.id} node={n} showLabels={showLabels} />
       ))}
       <SelectionHighlight net={network} />
       {flowViz && <FlowParticles network={network} />}
