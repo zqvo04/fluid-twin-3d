@@ -18,6 +18,7 @@ import { pumpSkidNetwork } from '../examples/demoNetworks';
 import { gridNetwork } from '../examples/largeNetwork';
 import { WaterHammerPanel } from './WaterHammerPanel';
 import { BuildPanel } from './BuildPanel';
+import { NetworkTransientPanel } from './NetworkTransientPanel';
 import { PipelineNetwork, ValidationIssue } from '../domain/network';
 import { applyPreset, flyTo, ViewPreset } from '../scene/cameraControl';
 
@@ -349,6 +350,8 @@ function NetworkControls({
         <div className="kv"><span>Sub-assemblies</span><span>{network.subAssemblies.length}</span></div>
         <div className="kv"><span>Fluid temp</span><span>{network.temperatureC} °C</span></div>
       </div>
+
+      <NetworkTransientPanel />
 
       {(dutyWarnings.length > 0 || connectorWarnings.length > 0 || vulnWarnings.length > 0) && (
         <div className="section">

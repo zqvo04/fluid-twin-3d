@@ -19,6 +19,7 @@ the full physics/architecture design and the 7-phase roadmap.
 | **4** | Vulnerability analysis (cavitation, B31.3, NPSH, erosion) + navigation | ✅ done |
 | **5** | Surge-protection design loop, flow viz, fly-to, static-pipe highlight | ✅ done |
 | **B** | Interactive 3D pipeline builder (place / connect / edit / delete) | ✅ done |
+| **T** | Network-wide transient (MOC) on any built network, live | ✅ done |
 | 6 | Engineering reports + example plants | next |
 
 ## What Phase 1 delivers
@@ -165,6 +166,23 @@ work. A throttled valve whose cavitation index σ falls below its incipient valu
 is flagged (ISA), since in steady flow the volumetric rate is conserved across
 the valve — the physics the valve expresses is the *pressure* drop, not a speed
 change.
+
+## Network-wide transient (time domain)
+
+Any built network can be analyzed in the time domain, not just the single-line
+lab. `physics/networkTransient.ts` runs the Method of Characteristics on the
+whole graph: every pipe carries the wave (MOC reaches at a common,
+Courant-adjusted Δt), and each time step solves all node heads simultaneously by
+Newton — junctions, tees, valves and pumps are handled uniformly. The initial
+condition is the steady solution, so closing a valve launches the surge and the
+pipes recolor with the travelling pressure wave; the panel reports the live peak
+surge and minimum head.
+
+Verified: reproduces the `a·V0/g` Joukowsky surge on a branched line, holds the
+steady state when nothing changes, and conserves mass at a tee. Massless
+internal nodes get a small compliance and heads are clamped at the vapor level
+(a column-separation limiter) for stability. Pumps are modeled as a rigid
+running head-gain in the transient (4-quadrant pump-trip is future work).
 
 ## Deployment
 

@@ -7,7 +7,8 @@
 
 import { solveSteadyState } from '../physics/steadySolver';
 import { WaterHammerSim } from '../physics/transient';
-import { WorkerRequest, WorkerResponse, StartTransientRequest } from './protocol';
+import { NetworkTransientSim } from '../physics/networkTransient';
+import { WorkerRequest, WorkerResponse, StartTransientRequest, StartNetTransientRequest } from './protocol';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -79,6 +80,56 @@ function runTransient(req: StartTransientRequest) {
   transientTimer = setTimeout(tick, frameMs);
 }
 
+function runNetTransient(req: StartNetTransientRequest) {
+  stopTransient();
+  // Finer reaches for a smoother wave, but cap total steps via a dt floor.
+  const sim = new NetworkTransientSim(req.network, 8, req.seconds / 1400);
+  const initHeads = Float64Array.from(sim.nodeHead);
+  const valve = req.valveId ? req.network.links.find((l) => l.id === req.valveId) : null;
+  const opening0 = valve && valve.kind === 'valve' ? valve.opening : 1;
+  const endTime = req.seconds;
+  const frameMs = 25;
+  let peakSurge = 0;
+
+  const tick = () => {
+    for (let k = 0; k < req.stepsPerFrame; k++) {
+      if (req.valveId) {
+        const factor = Math.max(0, 1 - sim.time / req.closureTime);
+        sim.setValveOpening(req.valveId, opening0 * factor);
+      }
+      sim.step();
+      for (let i = 0; i < sim.nodeCount; i++) {
+        const s = sim.nodeHead[i] - initHeads[i];
+        if (s > peakSurge) peakSurge = s;
+      }
+    }
+
+    const heads = Float32Array.from(sim.nodeHead);
+    const flows = Float32Array.from(sim.pipeIds.map((id) => sim.pipeFlow(id)));
+    let minHead = Infinity;
+    let maxHead = -Infinity;
+    for (let i = 0; i < heads.length; i++) {
+      if (heads[i] < minHead) minHead = heads[i];
+      if (heads[i] > maxHead) maxHead = heads[i];
+    }
+    const done = sim.time >= endTime;
+    const frame: WorkerResponse = {
+      type: 'NET_TRANSIENT_FRAME',
+      requestId: req.requestId,
+      time: sim.time,
+      heads,
+      flows,
+      minHead,
+      maxHead,
+      peakSurge,
+      done,
+    };
+    ctx.postMessage(frame, [heads.buffer, flows.buffer]);
+    transientTimer = done ? null : setTimeout(tick, frameMs);
+  };
+  transientTimer = setTimeout(tick, frameMs);
+}
+
 ctx.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const msg = event.data;
 
@@ -91,6 +142,10 @@ ctx.onmessage = (event: MessageEvent<WorkerRequest>) => {
       }
       case 'START_TRANSIENT': {
         runTransient(msg);
+        break;
+      }
+      case 'START_NET_TRANSIENT': {
+        runNetTransient(msg);
         break;
       }
       case 'STOP_TRANSIENT': {

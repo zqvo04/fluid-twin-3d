@@ -43,11 +43,24 @@ export interface StopTransientRequest {
   requestId: number;
 }
 
+/** Run a time-domain (water hammer) analysis on an arbitrary built network. */
+export interface StartNetTransientRequest {
+  type: 'START_NET_TRANSIENT';
+  requestId: number;
+  network: PipelineNetwork;
+  /** Valve link id to close (the surge trigger), or null to just perturb. */
+  valveId: string | null;
+  closureTime: number;
+  stepsPerFrame: number;
+  seconds: number;
+}
+
 export type WorkerRequest =
   | SolveSteadyRequest
   | PingRequest
   | StartTransientRequest
-  | StopTransientRequest;
+  | StopTransientRequest
+  | StartNetTransientRequest;
 
 export interface SolveSteadyResponse {
   type: 'SOLVE_STEADY_RESULT';
@@ -96,4 +109,25 @@ export interface TransientFrame {
   done: boolean;
 }
 
-export type WorkerResponse = SolveSteadyResponse | PongResponse | ErrorResponse | TransientFrame;
+/**
+ * One streamed network-transient frame. `heads` is in node order, `flows` in
+ * pipe-link order (the caller maps them back to ids via the network it sent).
+ */
+export interface NetTransientFrame {
+  type: 'NET_TRANSIENT_FRAME';
+  requestId: number;
+  time: number;
+  heads: Float32Array;
+  flows: Float32Array;
+  minHead: number;
+  maxHead: number;
+  peakSurge: number;
+  done: boolean;
+}
+
+export type WorkerResponse =
+  | SolveSteadyResponse
+  | PongResponse
+  | ErrorResponse
+  | TransientFrame
+  | NetTransientFrame;
