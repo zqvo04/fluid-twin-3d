@@ -138,7 +138,10 @@ export function splitPipe(
   const link = net.links.find((l) => l.id === linkId);
   if (!link || link.kind !== 'pipe') return { network: net, newNodeId: '' };
 
-  const node = makeNode('junction', position, net);
+  // The inserted junction inherits the split pipe's upstream section so a
+  // tap-in stays within the area it branches off.
+  const fromSection = net.nodes.find((n) => n.id === link.from)?.sectionId;
+  const node = { ...makeNode('junction', position, net), sectionId: fromSection };
   const withNode: PipelineNetwork = { ...net, nodes: [...net.nodes, node] };
 
   const a: PipeLink = { ...link, id: genId('P', withNode), from: link.from, to: node.id, length: undefined };

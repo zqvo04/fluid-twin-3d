@@ -15,7 +15,9 @@ import { pipeGeometry } from '../domain/catalog/pipes';
 import { rampColor, normalize } from './colormap';
 import { InstancedPipes } from './InstancedPipes';
 import { FlowParticles } from './FlowParticles';
-import { flyTo } from './cameraControl';
+import { flyTo, frameBounds } from './cameraControl';
+import { boundaryLinks, nodeSectionId } from '../domain/sections';
+import { sectionColors, inFocus, sectionBounds } from './sectionView';
 
 const UP = new Vector3(0, 1, 0);
 
@@ -50,7 +52,10 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
   const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === link.id);
   const result = useAppStore((s) => s.result);
-  const { mid, quat, length } = orient(nodeById(net, link.from), nodeById(net, link.to));
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
+  const fromNode = nodeById(net, link.from);
+  const focused = inFocus(activeSectionId, nodeSectionId(fromNode));
+  const { mid, quat, length } = orient(fromNode, nodeById(net, link.to));
 
   const radius =
     link.kind === 'valve' ? Math.max(0.16, pipeGeometry(link.nps, link.schedule).od * 2.6) : 0.28;
@@ -73,7 +78,7 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
     >
       <mesh position={mid} quaternion={quat}>
         <cylinderGeometry args={[radius, radius, length, 12]} />
-        <meshStandardMaterial color={color} metalness={0.3} roughness={0.6} />
+        <meshStandardMaterial color={color} metalness={0.3} roughness={0.6} transparent={!focused} opacity={focused ? 1 : 0.14} />
       </mesh>
       {link.kind === 'pump' ? (
         <mesh position={mid}>
@@ -84,6 +89,8 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
             emissiveIntensity={selected ? 0.6 : 0.3}
             metalness={0.5}
             roughness={0.4}
+            transparent={!focused}
+            opacity={focused ? 1 : 0.14}
           />
         </mesh>
       ) : (
@@ -95,10 +102,12 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
             emissiveIntensity={selected ? 0.6 : 0.25 + 0.9 * severity}
             metalness={0.4}
             roughness={0.5}
+            transparent={!focused}
+            opacity={focused ? 1 : 0.14}
           />
         </mesh>
       )}
-      {r && (
+      {r && focused && (
         <Html position={[mid.x, mid.y + 1.1, mid.z]} center distanceFactor={26} zIndexRange={[10, 0]}>
           <div className={`tag ${severity > 0.5 ? 'tag-hot' : ''}`}>
             {link.kind === 'valve' && <b>{(link.opening * 100).toFixed(0)}% open</b>}
@@ -110,20 +119,34 @@ function ComponentLink({ net, link }: { net: PipelineNetwork; link: NetworkLink 
   );
 }
 
-function NodeMesh({ node, showLabels }: { node: NetworkNode; showLabels: boolean }) {
+function NodeMesh({ node, showLabels, tint }: { node: NetworkNode; showLabels: boolean; tint?: Color }) {
   const handleNodeClick = useAppStore((s) => s.handleNodeClick);
   const editMode = useAppStore((s) => s.editMode);
   const selected = useAppStore((s) => s.selectedId === node.id);
   const isAnchor = useAppStore((s) => s.connectFrom === node.id || s.runFrom === node.id);
   const result = useAppStore((s) => s.result);
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
+  const sectionOverlay = useAppStore((s) => s.sectionOverlay);
   const [hovered, setHovered] = useState(false);
   const isReservoir = node.type === 'reservoir';
   const highlight = selected || isAnchor || hovered;
+  const focused = inFocus(activeSectionId, nodeSectionId(node));
 
   // Gauge pressure at this node from the solved head (head − elevation).
   const head = result?.heads.get(node.id);
   const gaugeBar = head !== undefined ? ((head - node.position.y) * 998 * 9.80665) / 1e5 : null;
-  const showLabel = showLabels || selected || hovered;
+  const showLabel = focused && (showLabels || selected || hovered);
+
+  // On the plant overview with the section overlay on, junctions carry their
+  // section's tint so areas read as colored zones.
+  const overlayTint = activeSectionId === null && sectionOverlay && !isReservoir ? tint : undefined;
+  const baseColor = isAnchor
+    ? '#ffd24d'
+    : isReservoir
+      ? '#3aa0a0'
+      : overlayTint
+        ? '#' + overlayTint.getHexString()
+        : '#c0c4cc';
 
   return (
     <mesh
@@ -146,9 +169,11 @@ function NodeMesh({ node, showLabels }: { node: NetworkNode; showLabels: boolean
     >
       {isReservoir ? <boxGeometry args={[1.4, 1.4, 1.4]} /> : <sphereGeometry args={[0.32, 16, 16]} />}
       <meshStandardMaterial
-        color={isAnchor ? '#ffd24d' : isReservoir ? '#3aa0a0' : '#c0c4cc'}
+        color={baseColor}
         emissive={highlight ? '#ffffff' : '#000000'}
         emissiveIntensity={highlight ? 0.55 : 0}
+        transparent={!focused}
+        opacity={focused ? 1 : 0.18}
       />
       {showLabel && (
         <Html position={[0, 1.1, 0]} center distanceFactor={26} zIndexRange={[6, 0]}>
@@ -274,6 +299,44 @@ function SelectionHighlight({ net }: { net: PipelineNetwork }) {
   );
 }
 
+/** Diamond markers at section tie-ins (links whose ends live in two areas). */
+function TieInMarkers({ net }: { net: PipelineNetwork }) {
+  const ties = useMemo(() => boundaryLinks(net), [net]);
+  if (ties.length === 0) return null;
+  return (
+    <group>
+      {ties.map(({ link }) => {
+        const a = nodeById(net, link.from).position;
+        const b = nodeById(net, link.to).position;
+        const mid: [number, number, number] = [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2];
+        return (
+          <mesh key={`tie-${link.id}`} position={mid} rotation={[0, Math.PI / 4, Math.PI / 4]}>
+            <octahedronGeometry args={[0.55, 0]} />
+            <meshStandardMaterial color="#ffffff" emissive="#8fb6ff" emissiveIntensity={0.7} metalness={0.2} roughness={0.4} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+/** Frame the active section (or the whole plant) when the route changes. */
+function SectionFocusCamera() {
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
+  const network = useAppStore((s) => s.network);
+  useEffect(() => {
+    if (activeSectionId === null) return; // plant view keeps the user's framing
+    const b = sectionBounds(network, activeSectionId);
+    if (!b) return;
+    // A short delay lets CameraControls mount before the fly-to.
+    const t = setTimeout(() => frameBounds(b), 80);
+    return () => clearTimeout(t);
+    // Only re-fit when the active section changes, not on every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSectionId]);
+  return null;
+}
+
 export function NetworkView() {
   const network = useAppStore((s) => s.network);
   const flowViz = useAppStore((s) => s.flowViz);
@@ -282,6 +345,7 @@ export function NetworkView() {
     () => network.links.filter((l) => l.kind === 'valve' || l.kind === 'pump'),
     [network],
   );
+  const secColors = useMemo(() => sectionColors(network), [network]);
 
   // Build keyboard: Esc ends a run; R/F raise/lower elevation (Shift = ×5) —
   // moving the selected node or, if none, the build work-plane.
@@ -312,8 +376,10 @@ export function NetworkView() {
         <ComponentLink key={l.id} net={network} link={l} />
       ))}
       {network.nodes.map((n) => (
-        <NodeMesh key={n.id} node={n} showLabels={showLabels} />
+        <NodeMesh key={n.id} node={n} showLabels={showLabels} tint={secColors.get(nodeSectionId(n))} />
       ))}
+      <TieInMarkers net={network} />
+      <SectionFocusCamera />
       <SelectionHighlight net={network} />
       {flowViz && <FlowParticles network={network} />}
       <EditPlane />

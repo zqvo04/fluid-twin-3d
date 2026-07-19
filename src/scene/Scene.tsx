@@ -16,6 +16,7 @@ import { NetworkView } from './NetworkView';
 import { WaterHammerScene } from './WaterHammerScene';
 import { useAppStore } from '../ui/store';
 import { registerCameraControls, keyboardNudge, CamControls, SceneBounds } from './cameraControl';
+import { sectionBounds } from './sectionView';
 
 function CameraRig({ bounds }: { bounds: SceneBounds }) {
   const ref = useRef<CameraControls>(null);
@@ -42,11 +43,17 @@ function CameraRig({ bounds }: { bounds: SceneBounds }) {
 export function Scene() {
   const scene = useAppStore((s) => s.scene);
   const network = useAppStore((s) => s.network);
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
 
   // Scene bounds drive the camera presets / framing.
   const bounds = useMemo<SceneBounds>(() => {
     if (scene === 'waterhammer') return { cx: 17, cy: 8, cz: 0, radius: 20 };
     if (network.nodes.length === 0) return { cx: 10, cy: 10, cz: 0, radius: 20 };
+    // On a section page, frame just that area (plus its tie-in neighbors).
+    if (activeSectionId) {
+      const sb = sectionBounds(network, activeSectionId);
+      if (sb) return sb;
+    }
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     for (const n of network.nodes) {
@@ -57,7 +64,7 @@ export function Scene() {
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
     const radius = Math.max(Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2, 6);
     return { cx, cy, cz, radius };
-  }, [scene, network]);
+  }, [scene, network, activeSectionId]);
 
   return (
     <Canvas camera={{ position: [18, 22, 40], fov: 50 }} shadows>

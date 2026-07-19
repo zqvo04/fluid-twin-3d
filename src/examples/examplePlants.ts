@@ -14,11 +14,15 @@ export function gravityMain(): PipelineNetwork {
   return {
     temperatureC: 20,
     subAssemblies: [],
+    sections: [
+      { id: 'HEADWORKS', name: 'Headworks', color: '#4c8dff' },
+      { id: 'DELIVERY_STN', name: 'Delivery Station', color: '#f4a63b' },
+    ],
     nodes: [
-      { id: 'SOURCE', type: 'reservoir', position: { x: 0, y: 120, z: 0 }, fixedHead: 120 },
-      { id: 'BREAK', type: 'junction', position: { x: 40, y: 60, z: 0 }, demand: 0 },
-      { id: 'VALVE_IN', type: 'junction', position: { x: 90, y: 12, z: 0 }, demand: 0 },
-      { id: 'DELIVERY', type: 'reservoir', position: { x: 100, y: 10, z: 0 }, fixedHead: 15 },
+      { id: 'SOURCE', type: 'reservoir', position: { x: 0, y: 120, z: 0 }, fixedHead: 120, sectionId: 'HEADWORKS' },
+      { id: 'BREAK', type: 'junction', position: { x: 40, y: 60, z: 0 }, demand: 0, sectionId: 'HEADWORKS' },
+      { id: 'VALVE_IN', type: 'junction', position: { x: 90, y: 12, z: 0 }, demand: 0, sectionId: 'DELIVERY_STN' },
+      { id: 'DELIVERY', type: 'reservoir', position: { x: 100, y: 10, z: 0 }, fixedHead: 15, sectionId: 'DELIVERY_STN' },
     ],
     links: [
       { id: 'MAIN_1', kind: 'pipe', from: 'SOURCE', to: 'BREAK', nps: '8"', schedule: '40', length: 500, fittings: ['entrance', 'elbow90'] },
@@ -29,17 +33,22 @@ export function gravityMain(): PipelineNetwork {
 }
 
 /** Pumped cooling-water loop: a sump makes up losses, a pump circulates through
- *  a ring serving three heat loads (junction demands). */
+ *  a ring serving three heat loads (junction demands). Partitioned into a pump
+ *  house and a distribution ring so the multi-view platform has real areas. */
 export function coolingLoop(): PipelineNetwork {
   return {
     temperatureC: 30,
     subAssemblies: [],
+    sections: [
+      { id: 'PUMP_HOUSE', name: 'Pump House', color: '#4c8dff' },
+      { id: 'DIST_RING', name: 'Distribution Ring', color: '#28c19a' },
+    ],
     nodes: [
-      { id: 'SUMP', type: 'reservoir', position: { x: -10, y: 2, z: 0 }, fixedHead: 2 },
-      { id: 'PUMP_OUT', type: 'junction', position: { x: 0, y: 3, z: 0 }, demand: 0 },
-      { id: 'HX1', type: 'junction', position: { x: 14, y: 3, z: 10 }, demand: 40 / 3600 },
-      { id: 'HX2', type: 'junction', position: { x: 28, y: 3, z: 0 }, demand: 40 / 3600 },
-      { id: 'HX3', type: 'junction', position: { x: 14, y: 3, z: -10 }, demand: 40 / 3600 },
+      { id: 'SUMP', type: 'reservoir', position: { x: -10, y: 2, z: 0 }, fixedHead: 2, sectionId: 'PUMP_HOUSE' },
+      { id: 'PUMP_OUT', type: 'junction', position: { x: 0, y: 3, z: 0 }, demand: 0, sectionId: 'PUMP_HOUSE' },
+      { id: 'HX1', type: 'junction', position: { x: 14, y: 3, z: 10 }, demand: 40 / 3600, sectionId: 'DIST_RING' },
+      { id: 'HX2', type: 'junction', position: { x: 28, y: 3, z: 0 }, demand: 40 / 3600, sectionId: 'DIST_RING' },
+      { id: 'HX3', type: 'junction', position: { x: 14, y: 3, z: -10 }, demand: 40 / 3600, sectionId: 'DIST_RING' },
     ],
     links: [
       { id: 'PUMP', kind: 'pump', from: 'SUMP', to: 'PUMP_OUT', spec: PUMP_50M, speedRatio: 1 },

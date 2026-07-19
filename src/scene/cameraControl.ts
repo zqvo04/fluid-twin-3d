@@ -52,6 +52,14 @@ export function flyTo(x: number, y: number, z: number, focusRadius = 4) {
   instance.setLookAt(x + d * 0.6, y + d * 0.5, z + d * 0.6, x, y, z, true);
 }
 
+/** Frame an explicit bounding sphere (used for section auto-fit, where the
+ *  bounds must be exact and not depend on the command-bus registration timing). */
+export function frameBounds(b: SceneBounds) {
+  if (!instance) return;
+  const d = Math.max(b.radius, 5) * 2.4;
+  instance.setLookAt(b.cx + d * 0.7, b.cy + d * 0.6, b.cz + d * 0.7, b.cx, b.cy, b.cz, true);
+}
+
 export function applyPreset(preset: ViewPreset) {
   if (!instance) return;
   const { cx, cy, cz, radius } = boundsFn();
