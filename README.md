@@ -21,6 +21,7 @@ the full physics/architecture design and the 7-phase roadmap.
 | **B** | Interactive 3D pipeline builder (place / connect / edit / delete) | ✅ done |
 | **T** | Network-wide transient (MOC) on any built network, live | ✅ done |
 | **6** | Engineering reports + example plants + exports | ✅ done |
+| **7** | Section-based multi-view platform (plant overview ↔ per-section pages) + platform UI | ✅ done |
 
 ## What Phase 1 delivers
 
@@ -205,6 +206,43 @@ document, a **CSV** results table, and Markdown, all downloadable from the panel
 Four **example plants** ship for one-click loading: the pump skid, a gravity
 main (a water-hammer showcase), a cooling-water loop, and the 480-pipe stress
 grid — each validated to converge.
+
+## Section-based multi-view platform (Phase 7)
+
+A real plant is managed as areas (units), so FluidTwin now partitions the
+network into **sections**. The model stays a single graph — every node carries
+an optional `sectionId` and a link's section is derived from its upstream node,
+so a **tie-in between areas is just a link whose ends live in different
+sections** (nothing extra to store or keep in sync). `domain/sections.ts` is
+pure and unit-tested.
+
+- **Two pages, one scene.** A hash router (`#/plant`, `#/section/:id`) drives a
+  **plant overview** — a KPI dashboard with one card per section (demand, peak
+  velocity, head range, element counts) that drills into the section — and a
+  **section workspace** that frames just that area (inactive areas ghost out,
+  tie-ins are marked, the camera auto-fits). Editing in either page is the same
+  data, so changes reflect instantly across both.
+- **Section-scoped solve.** A section can be solved on its own: its subnetwork
+  is extracted and the cut boundary nodes are pinned as fixed-head reservoirs
+  seeded from the last full-plant solution — fast iteration on one area without
+  re-solving thousands of pipes. The result is badged *"section-only, boundaries
+  fixed"* so it is never mistaken for the coupled plant.
+- **Assigning areas.** Create/rename/recolor/delete sections and drop selected
+  nodes into them from the workspace; new elements built on a section page are
+  born into that section. Untagged elements collect in an *Unassigned* bucket.
+
+The example plants ship pre-partitioned (e.g. the cooling loop = Pump House +
+Distribution Ring), and v1 project files still load — every element simply lands
+in Unassigned.
+
+## Platform UI
+
+The chrome is a token-driven design system (`src/tokens.css`, OKLCH throughout):
+a top app bar with a `Plant ▸ Area` breadcrumb and scene switch, a glass
+workspace panel, and dashboards styled as an engineering instrument — grotesk UI
+type paired with a monospace numeric face, a single cobalt accent, and semantic
+status hues. The app is cross-origin-isolated (COEP), so fonts are system stacks
+by design and everything stays self-contained.
 
 ## Deployment
 

@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { useAppStore, AnalysisResult, ViewMode } from './store';
+import { useAppStore, AnalysisResult } from './store';
 import { useSimulationWorker } from './useSimulationWorker';
 import { paToBar, headToPressure } from '../domain/units';
 import { serializeProject, deserializeProject } from '../domain/serialize';
@@ -19,8 +19,9 @@ import { WaterHammerPanel } from './WaterHammerPanel';
 import { BuildPanel } from './BuildPanel';
 import { NetworkTransientPanel } from './NetworkTransientPanel';
 import { ReportPanel } from './ReportPanel';
+import { SectionManager } from './SectionManager';
 import { EXAMPLE_PLANTS } from '../examples/examplePlants';
-import { PipelineNetwork, ValidationIssue } from '../domain/network';
+import { PipelineNetwork, ValidationIssue, plantSections } from '../domain/network';
 import { applyPreset, flyTo, ViewPreset } from '../scene/cameraControl';
 
 const VIEW_PRESETS: ViewPreset[] = ['fit', 'iso', 'top', 'front', 'side'];
@@ -149,16 +150,14 @@ function Inspector() {
 }
 
 export function ControlPanel() {
-  const { solve } = useSimulationWorker();
-  const viewMode = useAppStore((s) => s.viewMode);
-  const setViewMode = useAppStore((s) => s.setViewMode);
+  const { solve, solveSection } = useSimulationWorker();
   const result = useAppStore((s) => s.result);
   const solving = useAppStore((s) => s.solving);
   const network = useAppStore((s) => s.network);
   const setNetwork = useAppStore((s) => s.setNetwork);
   const cloneFirstSkid = useAppStore((s) => s.cloneFirstSkid);
   const scene = useAppStore((s) => s.scene);
-  const setScene = useAppStore((s) => s.setScene);
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const connectorWarnings = useMemo(() => checkConnectors(network), [network]);
@@ -202,18 +201,18 @@ export function ControlPanel() {
     e.target.value = '';
   };
 
+  const workspaceLabel =
+    scene === 'waterhammer'
+      ? 'Water Hammer Lab'
+      : activeSectionId
+        ? 'Section Workspace'
+        : 'Plant Workspace';
+
   return (
     <div className="panel">
-      <h1>FluidTwin 3D</h1>
-      <p className="subtitle">Pipeline Digital Twin · Phase 3</p>
-
-      <div className="row segmented">
-        <button className={scene === 'network' ? 'active' : ''} onClick={() => setScene('network')}>
-          Network (Steady)
-        </button>
-        <button className={scene === 'waterhammer' ? 'active' : ''} onClick={() => setScene('waterhammer')}>
-          Water Hammer
-        </button>
+      <div className="row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ fontSize: 'var(--text-lg)' }}>{workspaceLabel}</h1>
+        <span className="badge accent">Phase 7</span>
       </div>
 
       <NavBar />
@@ -223,10 +222,10 @@ export function ControlPanel() {
       ) : (
         <NetworkControls
           solve={solve}
+          solveSection={solveSection}
+          activeSectionId={activeSectionId}
           solving={solving}
           result={result}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
           cloneFirstSkid={cloneFirstSkid}
           setNetwork={setNetwork}
           network={network}
@@ -243,10 +242,10 @@ export function ControlPanel() {
 
 interface NetworkControlsProps {
   solve: () => void;
+  solveSection: (sectionId: string) => void;
+  activeSectionId: string | null;
   solving: boolean;
   result: AnalysisResult | null;
-  viewMode: ViewMode;
-  setViewMode: (m: ViewMode) => void;
   cloneFirstSkid: () => void;
   setNetwork: (net: PipelineNetwork) => void;
   network: PipelineNetwork;
@@ -259,10 +258,10 @@ interface NetworkControlsProps {
 
 function NetworkControls({
   solve,
+  solveSection,
+  activeSectionId,
   solving,
   result,
-  viewMode,
-  setViewMode,
   cloneFirstSkid,
   setNetwork,
   network,
@@ -273,6 +272,9 @@ function NetworkControls({
   vulnWarnings,
 }: NetworkControlsProps) {
   const select = useAppStore((s) => s.select);
+  const sectionOverlay = useAppStore((s) => s.sectionOverlay);
+  const toggleSectionOverlay = useAppStore((s) => s.toggleSectionOverlay);
+  const activeSection = plantSections(network).find((s) => s.id === activeSectionId);
 
   // Click an alarm -> select and fly the camera to the offending component.
   const focusLink = (linkId: string) => {
@@ -303,32 +305,53 @@ function NetworkControls({
 
       {editMode && <BuildPanel />}
 
-      <div className="row">
-        <button className="primary" onClick={solve} disabled={solving}>
-          {solving ? 'Solving…' : 'Run Steady-State Analysis'}
-        </button>
-      </div>
+      {activeSection ? (
+        <>
+          <div className="row">
+            <button className="primary" onClick={() => solveSection(activeSection.id)} disabled={solving}>
+              {solving ? 'Solving…' : `Solve “${activeSection.name}” (boundaries fixed)`}
+            </button>
+          </div>
+          <div className="row">
+            <button className="wide" onClick={solve} disabled={solving}>
+              Run Full Plant Analysis
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="row">
+          <button className="primary" onClick={solve} disabled={solving}>
+            {solving ? 'Solving…' : 'Run Steady-State Analysis'}
+          </button>
+        </div>
+      )}
 
-      {!editMode && (
-        <div className="row segmented">
-          <button className={viewMode === 'global' ? 'active' : ''} onClick={() => setViewMode('global')}>
-            Global View
+      {!editMode && activeSectionId === null && (
+        <div className="row">
+          <button className={sectionOverlay ? 'wide active' : 'wide'} onClick={toggleSectionOverlay}>
+            {sectionOverlay ? '● Section color overlay: ON' : '○ Section color overlay: OFF'}
           </button>
-          <button className={viewMode === 'detail' ? 'active' : ''} onClick={() => setViewMode('detail')}>
-            Detail View
-          </button>
+        </div>
+      )}
+
+      {result?.scopeSectionId && (
+        <div className="scope-note">
+          Section-only result — boundaries pinned at the last full-plant heads.
+          Run the full plant for coupled behavior.
         </div>
       )}
 
       {result && (
         <div className="status">
           {result.converged ? (
-            <span className="ok">Converged in {result.iterations} iterations (residual {result.residual.toExponential(1)})</span>
+            <span className="ok">Converged in {result.iterations} iterations · residual {result.residual.toExponential(1)}</span>
           ) : (
             <span className="warn">Did not converge</span>
           )}
         </div>
       )}
+
+      <SectionManager />
 
       <FlowToggle />
 

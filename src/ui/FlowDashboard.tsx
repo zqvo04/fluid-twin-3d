@@ -8,15 +8,18 @@ import { useMemo } from 'react';
 import { useAppStore } from './store';
 import { rampColor, normalize } from '../scene/colormap';
 import { m3sToM3h } from '../domain/units';
+import { linkSectionId } from '../domain/sections';
 
 export function FlowDashboard() {
   const network = useAppStore((s) => s.network);
   const result = useAppStore((s) => s.result);
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
 
   const data = useMemo(() => {
     if (!result) return null;
     const pipes = network.links
       .filter((l) => l.kind === 'pipe' || l.kind === 'valve')
+      .filter((l) => activeSectionId === null || linkSectionId(network, l) === activeSectionId)
       .map((l) => {
         const r = result.links.get(l.id)!;
         return { id: l.id, flow: Math.abs(r.flow), velocity: Math.abs(r.velocity) };
@@ -26,19 +29,23 @@ export function FlowDashboard() {
 
     const maxFlow = Math.max(1e-9, ...pipes.map((p) => p.flow));
     const maxVel = Math.max(1e-9, ...pipes.map((p) => p.velocity));
-    const heads = [...result.heads.values()];
-    const totalDemand = network.nodes.reduce((s, n) => s + Math.max(0, n.demand ?? 0), 0);
+    const scopedNodes =
+      activeSectionId === null
+        ? network.nodes
+        : network.nodes.filter((n) => (n.sectionId ?? null) === activeSectionId);
+    const heads = scopedNodes.map((n) => result.heads.get(n.id)).filter((h): h is number => h !== undefined);
+    const totalDemand = scopedNodes.reduce((s, n) => s + Math.max(0, n.demand ?? 0), 0);
 
     return {
       pipes: pipes.slice(0, 8),
       maxFlow,
       maxVel,
-      minHead: Math.min(...heads),
-      maxHead: Math.max(...heads),
+      minHead: heads.length ? Math.min(...heads) : 0,
+      maxHead: heads.length ? Math.max(...heads) : 0,
       totalDemand,
       pipeCount: pipes.length,
     };
-  }, [network, result]);
+  }, [network, result, activeSectionId]);
 
   if (!data) return null;
 

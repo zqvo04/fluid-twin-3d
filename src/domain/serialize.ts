@@ -8,7 +8,10 @@
 
 import { PipelineNetwork, validateNetwork } from './network';
 
-export const SCHEMA_VERSION = 1;
+// v2 adds plant sections: a `sections[]` array on the network and an optional
+// `sectionId` on each node. Both are optional, so a v1 file loads unchanged
+// (all elements land in "Unassigned").
+export const SCHEMA_VERSION = 2;
 
 export interface ProjectFile {
   schemaVersion: number;
@@ -42,9 +45,11 @@ export function deserializeProject(json: string): PipelineNetwork {
   }
   const file = parsed as Partial<ProjectFile>;
 
-  if (file.schemaVersion !== SCHEMA_VERSION) {
+  // v1 and v2 are both accepted; v1 files simply have no sections (every
+  // element reads as Unassigned). Reject anything newer or unrecognized.
+  if (file.schemaVersion !== 1 && file.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(
-      `Unsupported project schema version ${file.schemaVersion ?? '(missing)'}; expected ${SCHEMA_VERSION}.`,
+      `Unsupported project schema version ${file.schemaVersion ?? '(missing)'}; expected ${SCHEMA_VERSION} or 1.`,
     );
   }
 
@@ -58,6 +63,8 @@ export function deserializeProject(json: string): PipelineNetwork {
   ) {
     throw new Error('Project file is missing required network fields.');
   }
+  // Normalize the optional sections field so downstream code never branches.
+  if (!Array.isArray(net.sections)) net.sections = [];
 
   const issues = validateNetwork(net);
   const errors = issues.filter((i) => i.severity === 'error');

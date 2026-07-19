@@ -15,6 +15,7 @@ import { pipeGeometry } from '../domain/catalog/pipes';
 import { rampColor, normalize, divergingColor } from './colormap';
 import { flyTo } from './cameraControl';
 import { netTransientRunner } from '../transient/netRunner';
+import { sectionColors, GHOST, linkSectionId } from './sectionView';
 
 const UP = new Vector3(0, 1, 0);
 
@@ -27,8 +28,12 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
   const result = useAppStore((s) => s.result);
   const handleLinkClick = useAppStore((s) => s.handleLinkClick);
   const editMode = useAppStore((s) => s.editMode);
+  const activeSectionId = useAppStore((s) => s.activeSectionId);
+  const sectionOverlay = useAppStore((s) => s.sectionOverlay);
 
   const links = useMemo(() => pipeLinks(network), [network]);
+  const secColors = useMemo(() => sectionColors(network), [network]);
+  const linkSections = useMemo(() => links.map((l) => linkSectionId(network, l)), [links, network]);
 
   // Static transforms depend only on geometry, so compute once per network.
   const transforms = useMemo(() => {
@@ -63,12 +68,15 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
     mesh.count = transforms.length;
   }, [transforms]);
 
-  // Recolor whenever the analysis result changes.
+  // Recolor whenever the result, section focus, or overlay changes.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
     const color = new Color();
     const neutral = new Color('#8a8f98');
+    // On the plant overview, the overlay tints by section; a section page always
+    // shows the head field (with off-section pipes ghosted).
+    const tintBySection = activeSectionId === null && sectionOverlay;
 
     let min = 0;
     let max = 1;
@@ -80,18 +88,24 @@ export function InstancedPipes({ network }: { network: PipelineNetwork }) {
 
     let i = 0;
     for (const link of links) {
-      if (result) {
+      if (tintBySection) {
+        color.copy(secColors.get(linkSections[i]) ?? neutral);
+      } else if (result) {
         const hA = result.heads.get(link.from) ?? min;
         const hB = result.heads.get(link.to) ?? min;
         color.copy(rampColor(normalize((hA + hB) / 2, min, max)));
       } else {
         color.copy(neutral);
       }
+      // Ghost pipes that are outside the focused section.
+      if (activeSectionId !== null && linkSections[i] !== activeSectionId) {
+        color.lerp(GHOST, 0.85);
+      }
       mesh.setColorAt(i, color);
       i++;
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [result, links]);
+  }, [result, links, activeSectionId, sectionOverlay, secColors, linkSections]);
 
   // Live recolor during a network water-hammer run: pipes flash with the
   // travelling pressure wave (diverging ramp around the mid of the live range).

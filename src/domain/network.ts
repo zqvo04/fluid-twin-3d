@@ -32,6 +32,12 @@ export interface NetworkNode {
    * (free surface at grade). Gauge pressure head can be added here.
    */
   fixedHead?: number;
+  /**
+   * Plant section (area/unit) this node belongs to. Undefined = "Unassigned".
+   * A link's section is derived from its `from` node, so tie-ins between
+   * sections need not be stored — see domain/sections.ts.
+   */
+  sectionId?: string;
 }
 
 export interface PipeLink {
@@ -78,16 +84,41 @@ export interface SubAssembly {
   linkIds: string[];
 }
 
+/**
+ * A plant section (process area / unit) — a named, colored partition of the
+ * network for the multi-view platform. Sections are a view + aggregation unit;
+ * they do not change how the full-network solver runs. A section can be solved
+ * on its own (fixed-head boundaries) for fast iteration — see domain/sections.ts.
+ */
+export interface PlantSection {
+  id: string;
+  name: string;
+  /** Overlay tint (hex) used to color the section in the 3D scene. */
+  color: string;
+  description?: string;
+}
+
 export interface PipelineNetwork {
   nodes: NetworkNode[];
   links: NetworkLink[];
   subAssemblies: SubAssembly[];
+  /**
+   * Plant sections (areas). Optional for backward compatibility with v1
+   * projects and fixtures; absent/empty = single unpartitioned plant. Read it
+   * through `plantSections()` so callers never branch on undefined.
+   */
+  sections?: PlantSection[];
   /** Operating fluid temperature [C]. */
   temperatureC: number;
 }
 
+/** Plant sections of a network, normalized to an array. */
+export function plantSections(net: PipelineNetwork): PlantSection[] {
+  return net.sections ?? [];
+}
+
 export function emptyNetwork(temperatureC = 20): PipelineNetwork {
-  return { nodes: [], links: [], subAssemblies: [], temperatureC };
+  return { nodes: [], links: [], subAssemblies: [], sections: [], temperatureC };
 }
 
 // --- Lookups & geometry helpers -----------------------------------------

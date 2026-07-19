@@ -7,6 +7,14 @@
 
 import { create } from 'zustand';
 import { PipelineNetwork, NetworkNode, NetworkLink, NodeType, Vec3, emptyNetwork } from '../domain/network';
+import {
+  makeSection,
+  addSection as addSectionOp,
+  updateSection as updateSectionOp,
+  removeSection as removeSectionOp,
+  assignNodesToSection,
+} from '../domain/sections';
+import { Route, PLANT_ROUTE, parseHash, formatHash, routesEqual } from './routing';
 import { cloneSubAssembly } from '../domain/assembly';
 import {
   addNode as addNodeOp,
@@ -36,6 +44,12 @@ export interface AnalysisResult {
   residual: number;
   heads: Map<string, number>;
   links: Map<string, { flow: number; velocity: number; headLoss: number }>;
+  /**
+   * Section this result was solved in isolation for, with its boundaries pinned
+   * as fixed heads. null/undefined = a full-network solve. The UI badges a
+   * section-scoped result so it is never mistaken for the whole plant.
+   */
+  scopeSectionId?: string | null;
 }
 
 interface AppState {
@@ -44,6 +58,11 @@ interface AppState {
   selectedId: string | null;
   result: AnalysisResult | null;
   solving: boolean;
+
+  // Multi-view platform: which page is shown and which section is active.
+  route: Route;
+  /** Active section id when on a section page, else null (plant overview). */
+  activeSectionId: string | null;
 
   // Water Hammer Lab (transient) controls.
   scene: SceneKind;
@@ -54,6 +73,8 @@ interface AppState {
 
   /** Animate flow particles in the Global view. */
   flowViz: boolean;
+  /** On the plant overview, tint the scene by section instead of head field. */
+  sectionOverlay: boolean;
 
   // Interactive builder state.
   editMode: boolean;
@@ -67,7 +88,16 @@ interface AppState {
   setViewMode: (m: ViewMode) => void;
   select: (id: string | null) => void;
   setSolving: (v: boolean) => void;
-  applyResult: (r: SolveSteadyResponse) => void;
+  applyResult: (r: SolveSteadyResponse, scopeSectionId?: string | null) => void;
+
+  // Routing + sections.
+  navigate: (route: Route) => void;
+  syncFromHash: () => void;
+  createSection: () => void;
+  renameSection: (id: string, name: string) => void;
+  recolorSection: (id: string, color: string) => void;
+  deleteSection: (id: string) => void;
+  assignToSection: (nodeId: string, sectionId: string) => void;
 
   setNetwork: (net: PipelineNetwork) => void;
   updateValveOpening: (linkId: string, opening: number) => void;
@@ -79,6 +109,7 @@ interface AppState {
   setClosureTime: (t: number) => void;
   setStepsPerFrame: (n: number) => void;
   toggleFlowViz: () => void;
+  toggleSectionOverlay: () => void;
 
   // Builder actions.
   toggleEditMode: () => void;
@@ -112,12 +143,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   result: null,
   solving: false,
 
+  route: typeof window !== 'undefined' ? parseHash(window.location.hash) : PLANT_ROUTE,
+  activeSectionId:
+    typeof window !== 'undefined' ? parseHash(window.location.hash).sectionId : null,
+
   scene: 'network',
   labInputs: DEFAULT_LAB_INPUTS,
   closureTime: 0.5,
   stepsPerFrame: 2,
   periods: 8,
   flowViz: true,
+  sectionOverlay: true,
 
   editMode: false,
   editTool: 'select',
@@ -129,7 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setViewMode: (m) => set({ viewMode: m }),
   select: (id) => set({ selectedId: id }),
   setSolving: (v) => set({ solving: v }),
-  applyResult: (r) =>
+  applyResult: (r, scopeSectionId = null) =>
     set({
       solving: false,
       result: {
@@ -138,10 +174,52 @@ export const useAppStore = create<AppState>((set, get) => ({
         residual: r.residual,
         heads: new Map(r.heads),
         links: new Map(r.links),
+        scopeSectionId,
       },
     }),
 
-  setNetwork: (net) => set({ ...withStaleResult(net), selectedId: null }),
+  navigate: (route) => {
+    if (typeof window !== 'undefined') {
+      const next = formatHash(route);
+      if (window.location.hash !== next) window.location.hash = next;
+    }
+    set({ route, activeSectionId: route.sectionId, selectedId: null });
+  },
+
+  syncFromHash: () => {
+    if (typeof window === 'undefined') return;
+    const route = parseHash(window.location.hash);
+    if (!routesEqual(route, get().route)) {
+      set({ route, activeSectionId: route.sectionId, selectedId: null });
+    }
+  },
+
+  createSection: () => {
+    const net = get().network;
+    const section = makeSection(net);
+    set({ ...withStaleResult(addSectionOp(net, section)) });
+    get().navigate({ page: 'section', sectionId: section.id });
+  },
+
+  renameSection: (id, name) => set({ network: updateSectionOp(get().network, id, { name }) }),
+  recolorSection: (id, color) => set({ network: updateSectionOp(get().network, id, { color }) }),
+
+  deleteSection: (id) => {
+    set({ ...withStaleResult(removeSectionOp(get().network, id)) });
+    if (get().activeSectionId === id) get().navigate(PLANT_ROUTE);
+  },
+
+  assignToSection: (nodeId, sectionId) =>
+    set({ ...withStaleResult(assignNodesToSection(get().network, [nodeId], sectionId)) }),
+
+  setNetwork: (net) => {
+    // A fresh network may not contain the active section; return to the plant
+    // overview so we never strand the user on an empty section page.
+    if (typeof window !== 'undefined' && window.location.hash !== formatHash(PLANT_ROUTE)) {
+      window.location.hash = formatHash(PLANT_ROUTE);
+    }
+    set({ ...withStaleResult(net), selectedId: null, route: PLANT_ROUTE, activeSectionId: null });
+  },
 
   updateValveOpening: (linkId, opening) => {
     const net = get().network;
@@ -176,6 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setClosureTime: (t) => set({ closureTime: t }),
   setStepsPerFrame: (n) => set({ stepsPerFrame: n }),
   toggleFlowViz: () => set({ flowViz: !get().flowViz }),
+  toggleSectionOverlay: () => set({ sectionOverlay: !get().sectionOverlay }),
 
   // --- Builder ----------------------------------------------------------
   toggleEditMode: () =>
@@ -212,16 +291,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   placeNodeAt: (position) => {
-    const { editTool, network } = get();
+    const { editTool, network, activeSectionId } = get();
     const type: NodeType = editTool === 'place-reservoir' ? 'reservoir' : 'junction';
-    const node = makeNode(type, position, network);
+    // On a section page, new elements are born into that section.
+    const node = { ...makeNode(type, position, network), sectionId: activeSectionId ?? undefined };
     set({ ...withStaleResult(addNodeOp(network, node)), selectedId: node.id });
   },
 
   // Pipe Run: click points to draw a connected pipeline. Snaps to a nearby
   // existing node so runs can branch off or close loops.
   runClickAt: (position) => {
-    const { network, runFrom, linkDefaults } = get();
+    const { network, runFrom, linkDefaults, activeSectionId } = get();
     const SNAP = 1.6;
     const near = network.nodes.find((n) => {
       const dx = n.position.x - position.x;
@@ -235,7 +315,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (near) {
       targetId = near.id;
     } else {
-      const node = makeNode('junction', position, net);
+      const node = { ...makeNode('junction', position, net), sectionId: activeSectionId ?? undefined };
       net = addNodeOp(net, node);
       targetId = node.id;
     }
@@ -307,7 +387,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   editLinkKind: (id, kind) =>
     set(withStaleResult(changeLinkKindOp(get().network, id, kind, get().linkDefaults))),
 
-  newBlankNetwork: () => set({ ...withStaleResult(emptyNetwork(20)), selectedId: null, connectFrom: null }),
+  newBlankNetwork: () => {
+    if (typeof window !== 'undefined' && window.location.hash !== formatHash(PLANT_ROUTE)) {
+      window.location.hash = formatHash(PLANT_ROUTE);
+    }
+    set({
+      ...withStaleResult(emptyNetwork(20)),
+      selectedId: null,
+      connectFrom: null,
+      route: PLANT_ROUTE,
+      activeSectionId: null,
+    });
+  },
 }));
 
 // Re-export catalog types the UI needs alongside the store.
